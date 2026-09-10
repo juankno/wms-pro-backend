@@ -20,9 +20,13 @@ export class PaginationDto {
 }
 
 export function paginate(page: number, limit: number) {
-  return { skip: (page - 1) * limit, take: limit };
+  const p = Math.max(1, +page || 1);
+  const l = Math.max(1, +limit || 20);
+  return { skip: (p - 1) * l, take: l };
 }
 
 export function buildMeta(total: number, page: number, limit: number) {
-  return { total, page, limit, totalPages: Math.ceil(total / limit) };
+  const p = Math.max(1, +page || 1);
+  const l = Math.max(1, +limit || 20);
+  return { total: +total, page: p, limit: l, totalPages: Math.ceil(total / l) };
 }
