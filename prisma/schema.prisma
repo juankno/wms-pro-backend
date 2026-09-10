@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  operator
+  supervisor
+  admin
+}
+
+enum OrderStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum Priority {
+  low
+  medium
+  high
+}
+
+enum MovementType {
+  inventario_inicial
+  entrada_compra
+  entrada_devolucion
+  entrada_traslado
+  salida_picking
+  salida_traslado
+  ajuste_positivo
+  ajuste_negativo
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  name        String
+  email       String   @unique
+  password    String
+  role        Role     @default(operator)
+  warehouseId String
+  pushToken   String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
+  refreshTokens   RefreshToken[]
+  assignedPicking PickingOrder[]  @relation("PickingAssignee")
+  createdPicking  PickingOrder[]  @relation("PickingCreator")
+  assignedPacking PackingOrder[]  @relation("PackingAssignee")
+  createdPacking  PackingOrder[]  @relation("PackingCreator")
+  stockMovements  StockMovement[]
+  activityLogs    ActivityLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  warehouseStock WarehouseStock[]
+  pickingOrders  PickingOrder[]
+  packingOrders  PackingOrder[]
+  stockMovements StockMovement[]
+
+  @@map("warehouses")
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  description   String   @default("")
+  category      String
+  barcode       String?  @unique
+  unit          String   @default("UND")
+  brand         String?
+  compatibility String[] @default([])
+  imageUrl      String?
+  photos        String[] @default([])
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  warehouseStock WarehouseStock[]
+  stockMovements StockMovement[]
+  pickingItems   PickingItem[]
+  packingItems   PackingItem[]
+
+  @@map("products")
+}
+
+model WarehouseStock {
+  id             String @id @default(uuid())
+  productId      String
+  warehouseId    String
+  location       String @default("")
+  minStock       Int    @default(0)
+  stockFisico    Int    @default(0)
+  stockReservado Int    @default(0)
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId])
+  @@index([productId, warehouseId])
+  @@map("warehouse_stock")
+}
+
+model StockMovement {
+  id                    String       @id @default(uuid())
+  productId             String
+  warehouseId           String
+  type                  MovementType
+  quantity              Int
+  stockFisicoAntes      Int
+  stockFisicoDespues    Int
+  stockReservadoAntes   Int
+  stockReservadoDespues Int
+  referenceType         String?
+  referenceId           String?
+  notes                 String?
+  operatorId            String
+  operatorName          String
+  createdAt             DateTime     @default(now())
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  operator  User      @relation(fields: [operatorId], references: [id])
+
+  @@index([productId, warehouseId, createdAt(sort: Desc)])
+  @@map("stock_movements")
+}
+
+model PickingOrder {
+  id           String      @id @default(uuid())
+  reference    String      @unique
+  client       String
+  warehouseId  String
+  status       OrderStatus @default(pending)
+  priority     Priority    @default(medium)
+  assignedToId String?
+  createdById  String
+  notes        String?
+  photos       String[]    @default([])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+
+  warehouse    Warehouse     @relation(fields: [warehouseId], references: [id])
+  assignedTo   User?         @relation("PickingAssignee", fields: [assignedToId], references: [id])
+  createdBy    User          @relation("PickingCreator", fields: [createdById], references: [id])
+  items        PickingItem[]
+  packingOrder PackingOrder?
+  activityLogs ActivityLog[] @relation("PickingActivityLogs")
+
+  @@index([warehouseId, status])
+  @@map("picking_orders")
+}
+
+model PickingItem {
+  id               String  @id @default(uuid())
+  pickingOrderId   String
+  productId        String
+  productCode      String
+  productName      String
+  quantity         Int
+  pickedQuantity   Int     @default(0)
+  reservedQuantity Int     @default(0)
+  location         String  @default("")
+  barcode          String?
+  unit             String  @default("UND")
+  notes            String?
+
+  pickingOrder PickingOrder @relation(fields: [pickingOrderId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id])
+
+  @@map("picking_items")
+}
+
+model PackingOrder {
+  id             String      @id @default(uuid())
+  pickingOrderId String      @unique
+  reference      String      @unique
+  client         String
+  warehouseId    String
+  status         OrderStatus @default(pending)
+  assignedToId   String?
+  createdById    String
+  notes          String?
+  photos         String[]    @default([])
+  totalWeight    Float?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+
+  warehouse    Warehouse     @relation(fields: [warehouseId], references: [id])
+  pickingOrder PickingOrder  @relation(fields: [pickingOrderId], references: [id])
+  assignedTo   User?         @relation("PackingAssignee", fields: [assignedToId], references: [id])
+  createdBy    User          @relation("PackingCreator", fields: [createdById], references: [id])
+  items        PackingItem[]
+  boxes        PackingBox[]
+  activityLogs ActivityLog[] @relation("PackingActivityLogs")
+
+  @@index([warehouseId, status])
+  @@map("packing_orders")
+}
+
+model PackingItem {
+  id             String  @id @default(uuid())
+  packingOrderId String
+  productId      String
+  productCode    String
+  productName    String
+  quantity       Int
+  packedQuantity Int     @default(0)
+  barcode        String?
+  unit           String  @default("UND")
+  boxId          String?
+
+  packingOrder PackingOrder @relation(fields: [packingOrderId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id])
+  box          PackingBox?  @relation(fields: [boxId], references: [id])
+
+  @@map("packing_items")
+}
+
+model PackingBox {
+  id             String  @id @default(uuid())
+  packingOrderId String
+  label          String
+  weight         Float?
+  sealed         Boolean @default(false)
+
+  packingOrder PackingOrder  @relation(fields: [packingOrderId], references: [id], onDelete: Cascade)
+  items        PackingItem[]
+
+  @@map("packing_boxes")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  orderId     String
+  orderType   String
+  action      String
+  detail      String
+  operator    String
+  userId      String
+  warehouseId String
+  timestamp   DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  pickingOrder PickingOrder? @relation("PickingActivityLogs", fields: [orderId], references: [id], map: "activity_picking_fk")
+  packingOrder PackingOrder? @relation("PackingActivityLogs", fields: [orderId], references: [id], map: "activity_packing_fk")
+
+  @@index([orderId, orderType])
+  @@map("activity_logs")
+}

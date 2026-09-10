@@ -1,0 +1,39 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wms_pro_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: wms2025
+      POSTGRES_DB: wms_pro
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: wms_pro_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:wms2025@postgres:5432/wms_pro
+      JWT_SECRET: change-me-in-production
+      JWT_REFRESH_SECRET: change-me-too-in-production
+      NODE_ENV: development
+      PORT: 3000
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./uploads:/app/uploads
+
+volumes:
+  postgres_data:
