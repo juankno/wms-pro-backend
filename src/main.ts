@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import helmet from 'helmet';
+import * as path from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -27,7 +29,7 @@ async function bootstrap() {
   validateEnv();
 
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
 
   app.enableShutdownHooks();
 
@@ -146,6 +148,9 @@ Todas las listas devuelven:
       authentication: { preferredSecurityScheme: 'access-token' },
     }),
   );
+
+  const uploadDir = path.resolve(process.env.UPLOAD_DIR ?? './uploads');
+  app.useStaticAssets(uploadDir, { prefix: `/${prefix}/uploads` });
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
