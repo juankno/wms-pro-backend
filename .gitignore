@@ -9,8 +9,8 @@ dist/
 .env.local
 .env.*.local
 
-# Uploads
-uploads/
+# Uploads (solo el directorio raíz de archivos subidos, no src/uploads/)
+/uploads/
 
 # Logs
 logs/
