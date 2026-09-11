@@ -180,7 +180,6 @@ model PickingOrder {
   createdBy    User          @relation("PickingCreator", fields: [createdById], references: [id])
   items        PickingItem[]
   packingOrder PackingOrder?
-  activityLogs ActivityLog[] @relation("PickingActivityLogs")
 
   @@index([warehouseId, status])
   @@map("picking_orders")
@@ -229,7 +228,6 @@ model PackingOrder {
   createdBy    User          @relation("PackingCreator", fields: [createdById], references: [id])
   items        PackingItem[]
   boxes        PackingBox[]
-  activityLogs ActivityLog[] @relation("PackingActivityLogs")
 
   @@index([warehouseId, status])
   @@map("packing_orders")
@@ -278,9 +276,7 @@ model ActivityLog {
   warehouseId String
   timestamp   DateTime @default(now())
 
-  user         User          @relation(fields: [userId], references: [id])
-  pickingOrder PickingOrder? @relation("PickingActivityLogs", fields: [orderId], references: [id], map: "activity_picking_fk")
-  packingOrder PackingOrder? @relation("PackingActivityLogs", fields: [orderId], references: [id], map: "activity_packing_fk")
+  user User @relation(fields: [userId], references: [id])
 
   @@index([orderId, orderType])
   @@map("activity_logs")

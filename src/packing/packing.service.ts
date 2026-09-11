@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../activity/activity.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { OrderStatus, Role } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
@@ -16,6 +17,7 @@ export class PackingService {
   constructor(
     private prisma: PrismaService,
     private activity: ActivityService,
+    private uploads: UploadsService,
   ) {}
 
   async findAll(opts: {
@@ -218,6 +220,7 @@ export class PackingService {
       where: { id },
       data: { photos: order.photos.filter((p) => p !== photoUrl) },
     });
+    this.uploads.deleteFile(photoUrl);
     await this.activity.log({
       orderId: id, orderType: 'packing', action: 'photo_removed',
       detail: 'Foto eliminada', operator: operator.name, userId: operator.id, warehouseId: order.warehouseId,

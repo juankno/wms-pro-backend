@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
@@ -11,7 +12,10 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploads: UploadsService,
+  ) {}
 
   async findAll(query: ProductQueryDto, defaultWarehouseId: string) {
     const { search, category, stockStatus, warehouseId, page, limit } = query;
@@ -140,10 +144,12 @@ export class ProductsService {
   async removePhoto(id: string, photoUrl: string) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
-    return this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: { photos: product.photos.filter((p) => p !== photoUrl) },
     });
+    this.uploads.deleteFile(photoUrl);
+    return updated;
   }
 
   private attachStock(product: any, warehouseId: string) {
