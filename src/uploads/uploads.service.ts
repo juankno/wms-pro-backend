@@ -21,9 +21,10 @@ export class UploadsService {
   }
 
   getPublicUrl(filename: string): string {
+    const prefix = process.env.API_PREFIX ?? 'v1';
     const base =
-      process.env.EXPO_PUBLIC_API_URL ??
-      `http://localhost:${process.env.PORT ?? 3000}/v1`;
+      process.env.PUBLIC_URL ??
+      `http://localhost:${process.env.PORT ?? 3000}/${prefix}`;
     return `${base}/uploads/${filename}`;
   }
 
