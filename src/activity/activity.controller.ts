@@ -68,7 +68,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(@Query() q: PaginationDto, @CurrentUser() user: AuthUser) {
     const warehouseId =
-      user.role === Role.admin || user.role === Role.supervisor ? undefined : user.warehouseId;
+      user.role === Role.admin || user.role === Role.supervisor ? undefined : user.warehouseId!;
     return this.activityService.findAll(q.page, q.limit, warehouseId);
   }
 

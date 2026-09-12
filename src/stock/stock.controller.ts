@@ -85,7 +85,7 @@ Authorization: Bearer eyJ...
     @CurrentUser() user: AuthUser,
   ) {
     return this.stockService.findMovements({
-      warehouseId: q.warehouseId ?? user.warehouseId,
+      warehouseId: q.warehouseId ?? user.warehouseId!,
       type: q.type,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -128,7 +128,7 @@ Authorization: Bearer eyJ...
   ) {
     return this.stockService.findMovements({
       productId: id,
-      warehouseId: q.warehouseId ?? user.warehouseId,
+      warehouseId: q.warehouseId ?? user.warehouseId!,
       type: q.type,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -185,7 +185,7 @@ Content-Type: application/json
   ) {
     return this.stockService.registerMovement({
       productId,
-      warehouseId: body.warehouseId ?? user.warehouseId,
+      warehouseId: body.warehouseId ?? user.warehouseId!,
       type: body.type,
       quantity: body.quantity,
       notes: body.notes,

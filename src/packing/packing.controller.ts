@@ -120,7 +120,7 @@ Authorization: Bearer eyJ...
     @CurrentUser() user: AuthUser,
   ) {
     return this.packingService.findAll({
-      warehouseId: q.warehouseId ?? user.warehouseId,
+      warehouseId: q.warehouseId ?? user.warehouseId!,
       role: user.role,
       status: q.status,
       assignedTo: q.assignedTo,

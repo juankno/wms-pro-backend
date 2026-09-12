@@ -111,7 +111,7 @@ Authorization: Bearer eyJ...
     @CurrentUser() user: AuthUser,
   ) {
     return this.pickingService.findAll({
-      warehouseId: q.warehouseId ?? user.warehouseId,
+      warehouseId: q.warehouseId ?? user.warehouseId!,
       role: user.role,
       status: q.status,
       assignedTo: q.assignedTo,
@@ -195,7 +195,7 @@ Content-Type: application/json
   ) {
     return this.pickingService.create({
       ...body,
-      warehouseId: body.warehouseId ?? user.warehouseId,
+      warehouseId: body.warehouseId ?? user.warehouseId!,
       createdById: user.id,
     });
   }

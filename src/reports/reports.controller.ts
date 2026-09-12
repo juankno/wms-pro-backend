@@ -72,7 +72,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere supervisor o admin)', schema: { example: ERR_403 } })
   getDashboard(@Query('warehouseId') wId: string | undefined, @CurrentUser() user: AuthUser) {
-    return this.reportsService.getDashboard(wId ?? user.warehouseId);
+    return this.reportsService.getDashboard(wId ?? user.warehouseId!);
   }
 
   @Get('stock')
@@ -102,7 +102,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   getStock(@Query('warehouseId') wId: string | undefined, @CurrentUser() user: AuthUser) {
-    return this.reportsService.getStockStatus(wId ?? user.warehouseId);
+    return this.reportsService.getStockStatus(wId ?? user.warehouseId!);
   }
 
   @Get('picking')
@@ -125,7 +125,7 @@ Authorization: Bearer eyJ...
     @Query('to') to: string | undefined,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getPickingStats(wId ?? user.warehouseId, from, to);
+    return this.reportsService.getPickingStats(wId ?? user.warehouseId!, from, to);
   }
 
   @Get('packing')
@@ -148,7 +148,7 @@ Authorization: Bearer eyJ...
     @Query('to') to: string | undefined,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getPackingStats(wId ?? user.warehouseId, from, to);
+    return this.reportsService.getPackingStats(wId ?? user.warehouseId!, from, to);
   }
 
   @Get('stock/movements')
@@ -179,6 +179,6 @@ Authorization: Bearer eyJ...
     @Query('to') to: string | undefined,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getStockMovementsSummary(wId ?? user.warehouseId, from, to);
+    return this.reportsService.getStockMovementsSummary(wId ?? user.warehouseId!, from, to);
   }
 }

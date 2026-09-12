@@ -44,13 +44,13 @@ model User {
   email       String   @unique
   password    String
   role        Role     @default(operator)
-  warehouseId String
+  warehouseId String?
   pushToken   String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
+  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id])
   refreshTokens   RefreshToken[]
   assignedPicking PickingOrder[]  @relation("PickingAssignee")
   createdPicking  PickingOrder[]  @relation("PickingCreator")

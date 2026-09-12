@@ -97,7 +97,7 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(@Query() q: ProductQueryDto, @CurrentUser() user: AuthUser) {
-    return this.productsService.findAll(q, user.warehouseId);
+    return this.productsService.findAll(q, user.warehouseId!);
   }
 
   @Get('barcode/:barcode')
@@ -116,7 +116,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   findByBarcode(@Param('barcode') barcode: string, @CurrentUser() user: AuthUser) {
-    return this.productsService.findByBarcode(barcode, user.warehouseId);
+    return this.productsService.findByBarcode(barcode, user.warehouseId!);
   }
 
   @Get(':id/stock')
@@ -153,7 +153,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   async getStock(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const product = await this.productsService.findById(id, user.warehouseId);
+    const product = await this.productsService.findById(id, user.warehouseId!);
     return product.allWarehousesStock;
   }
 
@@ -179,7 +179,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.productsService.findById(id, user.warehouseId);
+    return this.productsService.findById(id, user.warehouseId!);
   }
 
   @Post()

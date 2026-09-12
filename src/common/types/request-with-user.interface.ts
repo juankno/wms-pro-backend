@@ -5,7 +5,7 @@ export interface JwtPayload {
   sub: string;
   username: string;
   role: Role;
-  warehouseId: string;
+  warehouseId: string | null;
 }
 
 export interface AuthUser extends JwtPayload {
