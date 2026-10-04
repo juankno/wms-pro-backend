@@ -37,6 +37,7 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 | D8 | Código y comentarios en **inglés**, comentarios mínimos. Los textos que ve el usuario (mensajes de error de la API, Swagger, UI) siguen en español hasta implementar i18n en la Fase 8. La API siempre expone códigos de error estables en inglés (`WAREHOUSE_FORBIDDEN`, …). | Producto SaaS internacional; los clientes traducen a partir del código. |
 | D9 | Los nombres del modelo de datos en español (`stockFisico`, `entrada_compra`, …) se renombran a inglés en la **Fase 1**, en la misma migración que agrega `tenantId`, como cambio de contrato coordinado (API v2) en los tres repos. | Tocar el esquema y el contrato una sola vez. |
 | D10 | Tests con **Vitest + SWC** (NestJS 12 es solo ESM y Jest no lo carga). Integración contra una BD desechable (`TEST_DATABASE_URL`). Nunca se commitea con errores de compilación, lint o tests. | Calidad mínima exigible a cada PR. |
+| D11 | El aislamiento por tenant se hace en la aplicación: `TenantInterceptor` + `AsyncLocalStorage` + un proxy del cliente de Prisma que inyecta `tenantId` **al construir** cada consulta (no al ejecutarla), y SQL crudo con filtro explícito. **RLS de PostgreSQL queda para antes de producción (Fase 8)**, con dos roles: `wms_app` (sin `BYPASSRLS`, `FORCE ROW LEVEL SECURITY`, `SET LOCAL app.tenant_id` por transacción) y `wms_system` (migraciones, login, refresh, consola de plataforma). | Un superusuario ignora RLS, y fijar la variable por consulta con el pool de Prisma duplica los viajes a la base. La capa de aplicación ya está cubierta por tests de aislamiento. |
 
 ## 4. Diagnóstico inicial (2026-10-04)
 
@@ -122,10 +123,10 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [x] 0.9 Docker y CI en los tres repos (B20, F7, M12).
 
 ### Fase 1 — Base SaaS (3–4 semanas)
-- [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1. `MovementType` ya se renombró en la Fase 0 (backend #6, web #1).
-- [ ] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
-- [ ] 1.2 Extensión de Prisma que inyecte `tenantId` y políticas RLS en PostgreSQL.
-- [ ] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
+- [x] 1.0 Renombrar a inglés campos y enums del modelo (D9). Backend #11, web #4, móvil #3.
+- [x] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
+- [x] 1.2 Aislamiento por tenant en el cliente de Prisma (backend #12). RLS diferido a la Fase 8 (D11).
+- [x] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
 - [ ] 1.4 Roles y permisos configurables por tenant (reemplazan el enum fijo) e invitación de usuarios por correo.
 - [ ] 1.5 Consola de super-admin de la plataforma: crear, suspender y entrar como soporte a un tenant, y métricas de uso.
 - [ ] 1.6 Auditoría general (interceptor), por tenant.
@@ -184,11 +185,13 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ## 6. Estado actual
 
-- **Fase 0 completa** en los tres repos (pendiente de merge). Queda abierto B17 (uploads en disco local, se resuelve con S3 en la tarea 1.7).
+- **Fase 0 completa** (pendiente de merge). Queda abierto B17 (uploads en disco local, se resuelve en la tarea 1.7).
+- **Fase 1 en curso:** 1.0 a 1.3 hechas (pendientes de merge).
 - **Mergeados:** backend #1–#6.
-- **PRs abiertos, con CI en verde (mergear en este orden):**
-  - Backend: #7 (estado del plan y CI), #9 (categorías y nombres en movimientos), #10 (Docker).
-  - Web: #1 (tipos de movimiento en inglés, CI y Next 16.3.8) → #2 (fallos F2–F6, requiere backend #9) → #3 (Docker).
-  - Móvil: #1 (fallos M1–M12, requiere backend #9) → #2 (EAS).
-- **Siguiente tarea:** Fase 1 (base SaaS): 1.0 y 1.1, renombrado a inglés y modelo `Tenant`.
+- **PRs abiertos, con CI en verde (mergear en orden por repo):**
+  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa).
+  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login).
+  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login).
+- **Despliegue coordinado:** backend #11 con web #4 y móvil #3, y backend #12 con web #5 y móvil #4.
+- **Siguiente tarea:** 1.6 (auditoría), 1.7 (almacenamiento S3), 1.8 (límites por plan), 1.5 (consola de plataforma), 1.4 (roles configurables).
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
