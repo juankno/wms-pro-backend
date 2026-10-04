@@ -29,3 +29,5 @@ prisma/migrations/dev.db
 
 # Test coverage
 coverage/
+
+*.tsbuildinfo

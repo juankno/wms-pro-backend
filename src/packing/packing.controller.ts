@@ -27,7 +27,16 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { OrdersQueryDto } from '../common/dto/orders-query.dto';
+import { scopeWarehouseFilter } from '../common/utils/warehouse-scope';
+import { AddPhotoDto } from '../picking/dto/create-picking.dto';
+import {
+  AddBoxDto,
+  CreatePackingDto,
+  UpdatePackingDto,
+  UpdatePackingItemDto,
+  UpdatePackingStatusDto,
+} from './dto/create-packing.dto';
 
 const PACKING_ITEM_EXAMPLE = {
   id: 'pki_001',
@@ -115,12 +124,11 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(
-    @Query() q: PaginationDto & { status?: OrderStatus; assignedTo?: string; search?: string; from?: string; to?: string; warehouseId?: string },
+    @Query() q: OrdersQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.packingService.findAll({
-      warehouseId: q.warehouseId ?? user.warehouseId!,
-      role: user.role,
+      warehouseId: scopeWarehouseFilter(user, q.warehouseId),
       status: q.status,
       assignedTo: q.assignedTo,
       search: q.search,
@@ -140,8 +148,8 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 200, description: 'Orden encontrada', schema: { example: PACKING_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  findOne(@Param('id') id: string) {
-    return this.packingService.findById(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.packingService.findById(id, user);
   }
 
   @Post()
@@ -181,10 +189,10 @@ Content-Type: application/json
   @ApiResponse({ status: 409, description: 'Ya existe packing para este picking', schema: { example: ERR_409_PICKING } })
   @ApiResponse({ status: 422, description: 'Picking no está completado', schema: { example: ERR_422_PICKING } })
   create(
-    @Body() body: { pickingOrderId: string; reference: string; assignedToId?: string; notes?: string },
+    @Body() body: CreatePackingDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.packingService.create({ ...body, createdById: user.id });
+    return this.packingService.create(body, user);
   }
 
   @Patch(':id')
@@ -196,8 +204,8 @@ Content-Type: application/json
   @ApiResponse({ status: 200, description: 'Orden actualizada', schema: { example: PACKING_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  update(@Param('id') id: string, @Body() body: { notes?: string; assignedToId?: string; totalWeight?: number }) {
-    return this.packingService.update(id, body);
+  update(@Param('id') id: string, @Body() body: UpdatePackingDto, @CurrentUser() user: AuthUser) {
+    return this.packingService.update(id, body, user);
   }
 
   @Delete(':id')
@@ -213,8 +221,8 @@ Content-Type: application/json
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
   @ApiResponse({ status: 422, description: 'La orden no está en estado pending', schema: { example: { ...ERR_422_STATUS, message: 'Solo se pueden eliminar órdenes pending' } } })
-  remove(@Param('id') id: string) {
-    return this.packingService.delete(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.packingService.delete(id, user);
   }
 
   @Patch(':id/status')
@@ -244,10 +252,10 @@ Content-Type: application/json
   @ApiResponse({ status: 422, description: 'Transición de estado inválida', schema: { example: ERR_422_STATUS } })
   updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: OrderStatus },
+    @Body() body: UpdatePackingStatusDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.packingService.updateStatus(id, body.status, user.id, user.name);
+    return this.packingService.updateStatus(id, body.status, user);
   }
 
   @Patch(':id/items/:itemId')
@@ -264,9 +272,10 @@ Content-Type: application/json
   updateItem(
     @Param('id') orderId: string,
     @Param('itemId') itemId: string,
-    @Body() body: { packedQuantity: number },
+    @Body() body: UpdatePackingItemDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.packingService.updateItem(orderId, itemId, body.packedQuantity);
+    return this.packingService.updateItem(orderId, itemId, body.packedQuantity, user);
   }
 
   @Post(':id/boxes')
@@ -288,8 +297,8 @@ Content-Type: application/json
   @ApiResponse({ status: 201, description: 'Caja creada', schema: { example: BOX_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  addBox(@Param('id') id: string, @Body() body: { label: string }) {
-    return this.packingService.addBox(id, body.label);
+  addBox(@Param('id') id: string, @Body() body: AddBoxDto, @CurrentUser() user: AuthUser) {
+    return this.packingService.addBox(id, body.label, user);
   }
 
   @Post(':id/photos')
@@ -302,8 +311,8 @@ Content-Type: application/json
   @ApiResponse({ status: 201, description: 'Foto añadida' })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  addPhoto(@Param('id') id: string, @Body('url') url: string, @CurrentUser() user: AuthUser) {
-    return this.packingService.addPhoto(id, url, user);
+  addPhoto(@Param('id') id: string, @Body() body: AddPhotoDto, @CurrentUser() user: AuthUser) {
+    return this.packingService.addPhoto(id, body.url, user);
   }
 
   @Delete(':id/photos/:photoUrl')
@@ -331,7 +340,7 @@ Content-Type: application/json
   @ApiResponse({ status: 200, description: 'Caja sellada', schema: { example: { ...BOX_EXAMPLE, sealed: true } } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden o caja no encontrada', schema: { example: ERR_404 } })
-  sealBox(@Param('id') id: string, @Param('boxId') boxId: string) {
-    return this.packingService.sealBox(id, boxId);
+  sealBox(@Param('id') id: string, @Param('boxId') boxId: string, @CurrentUser() user: AuthUser) {
+    return this.packingService.sealBox(id, boxId, user);
   }
 }

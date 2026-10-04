@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 
@@ -6,16 +7,19 @@ import { paginate, buildMeta } from '../common/dto/pagination.dto';
 export class ActivityService {
   constructor(private prisma: PrismaService) {}
 
-  async log(data: {
-    orderId: string;
-    orderType: 'picking' | 'packing';
-    action: string;
-    detail: string;
-    operator: string;
-    userId: string;
-    warehouseId: string;
-  }) {
-    return this.prisma.activityLog.create({ data });
+  async log(
+    data: {
+      orderId: string;
+      orderType: 'picking' | 'packing';
+      action: string;
+      detail: string;
+      operator: string;
+      userId: string;
+      warehouseId: string;
+    },
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
+    return db.activityLog.create({ data });
   }
 
   async findAll(page: number, limit: number, warehouseId?: string) {

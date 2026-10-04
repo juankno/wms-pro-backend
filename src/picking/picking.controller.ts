@@ -20,14 +20,22 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OrderStatus, Priority, Role } from '@prisma/client';
+import { OrderStatus, Role } from '@prisma/client';
 import { PickingService } from './picking.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { OrdersQueryDto } from '../common/dto/orders-query.dto';
+import { resolveWarehouseId, scopeWarehouseFilter } from '../common/utils/warehouse-scope';
+import {
+  AddPhotoDto,
+  CreatePickingDto,
+  UpdatePickingDto,
+  UpdatePickingItemDto,
+  UpdatePickingStatusDto,
+} from './dto/create-picking.dto';
 
 const PICKING_ITEM_EXAMPLE = {
   id: 'pi_001',
@@ -107,12 +115,11 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(
-    @Query() q: PaginationDto & { status?: OrderStatus; assignedTo?: string; search?: string; from?: string; to?: string; warehouseId?: string },
+    @Query() q: OrdersQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.pickingService.findAll({
-      warehouseId: q.warehouseId ?? user.warehouseId!,
-      role: user.role,
+      warehouseId: scopeWarehouseFilter(user, q.warehouseId),
       status: q.status,
       assignedTo: q.assignedTo,
       search: q.search,
@@ -132,8 +139,8 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 200, description: 'Orden encontrada', schema: { example: PICKING_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  findOne(@Param('id') id: string) {
-    return this.pickingService.findById(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.pickingService.findById(id, user);
   }
 
   @Post()
@@ -182,22 +189,10 @@ Content-Type: application/json
   @ApiResponse({ status: 409, description: 'Stock insuficiente', schema: { example: ERR_409_STOCK } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: ERR_422_VAL } })
   create(
-    @Body() body: {
-      reference: string;
-      client: string;
-      warehouseId?: string;
-      priority?: Priority;
-      assignedToId?: string;
-      notes?: string;
-      items: { productId: string; quantity: number }[];
-    },
+    @Body() body: CreatePickingDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.create({
-      ...body,
-      warehouseId: body.warehouseId ?? user.warehouseId!,
-      createdById: user.id,
-    });
+    return this.pickingService.create({ ...body, warehouseId: resolveWarehouseId(user, body.warehouseId) }, user);
   }
 
   @Post(':id/photos')
@@ -210,8 +205,8 @@ Content-Type: application/json
   @ApiResponse({ status: 201, description: 'Foto añadida' })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  addPhoto(@Param('id') id: string, @Body('url') url: string, @CurrentUser() user: AuthUser) {
-    return this.pickingService.addPhoto(id, url, user);
+  addPhoto(@Param('id') id: string, @Body() body: AddPhotoDto, @CurrentUser() user: AuthUser) {
+    return this.pickingService.addPhoto(id, body.url, user);
   }
 
   @Delete(':id/photos/:photoUrl')
@@ -238,8 +233,8 @@ Content-Type: application/json
   @ApiResponse({ status: 200, description: 'Orden actualizada', schema: { example: PICKING_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
-  update(@Param('id') id: string, @Body() body: { client?: string; notes?: string; priority?: Priority; assignedToId?: string }) {
-    return this.pickingService.update(id, body);
+  update(@Param('id') id: string, @Body() body: UpdatePickingDto, @CurrentUser() user: AuthUser) {
+    return this.pickingService.update(id, body, user);
   }
 
   @Delete(':id')
@@ -255,8 +250,8 @@ Content-Type: application/json
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
   @ApiResponse({ status: 422, description: 'La orden no está en estado pending', schema: { example: { ...ERR_422_STATUS, message: 'Solo se pueden eliminar órdenes pending' } } })
-  remove(@Param('id') id: string) {
-    return this.pickingService.delete(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.pickingService.delete(id, user);
   }
 
   @Patch(':id/status')
@@ -286,10 +281,10 @@ Content-Type: application/json
   @ApiResponse({ status: 422, description: 'Transición de estado inválida', schema: { example: ERR_422_STATUS } })
   updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: OrderStatus },
+    @Body() body: UpdatePickingStatusDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.updateStatus(id, body.status, user.id, user.name);
+    return this.pickingService.updateStatus(id, body.status, user);
   }
 
   @Patch(':id/items/:itemId')
@@ -320,8 +315,9 @@ Content-Type: application/json
   updateItem(
     @Param('id') orderId: string,
     @Param('itemId') itemId: string,
-    @Body() body: { pickedQuantity: number },
+    @Body() body: UpdatePickingItemDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity);
+    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user);
   }
 }

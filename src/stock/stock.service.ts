@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MovementType, Prisma, WarehouseStock } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { ManualMovementType } from './dto/create-movement.dto';
+import { lockWarehouseStock } from './stock-lock';
 
 @Injectable()
 export class StockService {
@@ -20,7 +21,7 @@ export class StockService {
     operatorName: string;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      const stock = await this.lockStock(tx, opts.productId, opts.warehouseId);
+      const stock = await lockWarehouseStock(tx, opts.productId, opts.warehouseId);
       if (!stock) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en este almacén' });
 
       const { stockFisico, stockReservado } = stock;
@@ -106,7 +107,7 @@ export class StockService {
       // Lock in a deterministic order so opposite-direction transfers cannot deadlock.
       const locked = new Map<string, WarehouseStock>();
       for (const warehouseId of [opts.fromWarehouseId, opts.toWarehouseId].sort()) {
-        locked.set(warehouseId, (await this.lockStock(tx, opts.productId, warehouseId))!);
+        locked.set(warehouseId, (await lockWarehouseStock(tx, opts.productId, warehouseId))!);
       }
       const fromStock = locked.get(opts.fromWarehouseId)!;
       const toStock = locked.get(opts.toWarehouseId)!;
@@ -216,17 +217,5 @@ export class StockService {
     ]);
 
     return { data, meta: buildMeta(total, opts.page, opts.limit) };
-  }
-
-  private async lockStock(
-    tx: Prisma.TransactionClient,
-    productId: string,
-    warehouseId: string,
-  ): Promise<WarehouseStock | null> {
-    const rows = await tx.$queryRaw<WarehouseStock[]>`
-      SELECT * FROM warehouse_stock
-      WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId}
-      FOR UPDATE`;
-    return rows[0] ?? null;
   }
 }
