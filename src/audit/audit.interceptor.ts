@@ -37,6 +37,8 @@ export class AuditInterceptor implements NestInterceptor {
             payload: auditPayload(request.body),
             requestId: request.headers?.['x-request-id'] as string | undefined,
             ip: request.ip,
+            impersonatorId: user.impersonator?.id,
+            impersonatorName: user.impersonator?.name,
           })
           .catch((error: unknown) => this.logger.error(`Audit write failed: ${String(error)}`));
       }),

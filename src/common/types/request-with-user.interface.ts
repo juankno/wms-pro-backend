@@ -8,12 +8,15 @@ export interface JwtPayload {
   username: string;
   role: Role;
   warehouseId: string | null;
+  // Platform admin behind a support session.
+  impersonatorId?: string;
 }
 
 export interface AuthUser extends JwtPayload {
   id: string;
   name: string;
   permissions: Permission[];
+  impersonator?: { id: string; name: string };
 }
 
 export interface RequestWithUser extends Request {

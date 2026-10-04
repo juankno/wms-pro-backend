@@ -15,6 +15,8 @@ export interface AuditEntry {
   payload?: unknown;
   requestId?: string;
   ip?: string;
+  impersonatorId?: string;
+  impersonatorName?: string;
 }
 
 @Injectable()

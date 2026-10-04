@@ -14,6 +14,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { RejectImpersonationGuard } from './guards/reject-impersonation.guard';
 
 const AUTH_RATE_LIMIT = { limit: 10, ttl: 60_000 };
 
@@ -83,7 +84,7 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RejectImpersonationGuard)
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
@@ -97,7 +98,7 @@ export class AuthController {
     return this.authService.logout(user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RejectImpersonationGuard)
   @Patch('me/push-token')
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -115,11 +116,11 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Perfil del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })
-  me(@CurrentUser() user: AuthUser) {
-    return this.authService.me(user.id);
+  async me(@CurrentUser() user: AuthUser) {
+    return { ...(await this.authService.me(user.id)), impersonator: user.impersonator ?? null };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RejectImpersonationGuard)
   @Patch('me/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle({ default: AUTH_RATE_LIMIT })

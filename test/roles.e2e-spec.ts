@@ -18,7 +18,7 @@ describe('Custom roles (integration)', () => {
   const roles = scopedTo(new RolesService(prisma), () => tenant.id);
   const otherRoles = scopedTo(new RolesService(prisma), () => other.id);
   const users = scopedTo(new UsersService(prisma, new PlanLimitsService(prisma)), () => tenant.id);
-  const strategy = new JwtStrategy(new UsersService(prisma, new PlanLimitsService(prisma)));
+  const strategy = new JwtStrategy(new UsersService(prisma, new PlanLimitsService(prisma)), prisma);
 
   beforeAll(async () => {
     [tenant, other] = await Promise.all([createTestTenant(prisma), createTestTenant(prisma)]);
