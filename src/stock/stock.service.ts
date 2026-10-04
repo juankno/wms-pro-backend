@@ -1,22 +1,17 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { MovementType } from '@prisma/client';
+import { MovementType, Prisma, WarehouseStock } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
-import { NotificationsService } from '../notifications/notifications.service';
-import { ActivityService } from '../activity/activity.service';
+import { ManualMovementType } from './dto/create-movement.dto';
 
 @Injectable()
 export class StockService {
-  constructor(
-    private prisma: PrismaService,
-    private notifications: NotificationsService,
-    private activity: ActivityService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async registerMovement(opts: {
     productId: string;
     warehouseId: string;
-    type: MovementType;
+    type: ManualMovementType;
     quantity: number;
     notes?: string;
     referenceType?: string;
@@ -25,19 +20,12 @@ export class StockService {
     operatorName: string;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      const stock = await tx.warehouseStock.findUnique({
-        where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.warehouseId } },
-      });
+      const stock = await this.lockStock(tx, opts.productId, opts.warehouseId);
       if (!stock) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en este almacén' });
 
       const { stockFisico, stockReservado } = stock;
-      let newFisico = stockFisico;
-      let newReservado = stockReservado;
+      const isDecrease = opts.type === 'ajuste_negativo';
 
-      const isDecrease = ['ajuste_negativo', 'salida_traslado'].includes(opts.type);
-      const isIncrease = ['entrada_compra', 'entrada_devolucion', 'entrada_traslado', 'inventario_inicial', 'ajuste_positivo'].includes(opts.type);
-
-      if (isIncrease) newFisico += opts.quantity;
       if (isDecrease) {
         const disponible = stockFisico - stockReservado;
         if (disponible < opts.quantity) {
@@ -47,39 +35,39 @@ export class StockService {
             details: [{ productId: opts.productId, requested: opts.quantity, available: disponible }],
           });
         }
-        newFisico -= opts.quantity;
       }
 
-      const [movement] = await Promise.all([
-        tx.stockMovement.create({
-          data: {
-            productId: opts.productId,
-            warehouseId: opts.warehouseId,
-            type: opts.type,
-            quantity: opts.quantity,
-            stockFisicoAntes: stockFisico,
-            stockFisicoDespues: newFisico,
-            stockReservadoAntes: stockReservado,
-            stockReservadoDespues: newReservado,
-            referenceType: opts.referenceType,
-            referenceId: opts.referenceId,
-            notes: opts.notes,
-            operatorId: opts.operatorId,
-            operatorName: opts.operatorName,
-          },
-        }),
-        tx.warehouseStock.update({
-          where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.warehouseId } },
-          data: { stockFisico: newFisico, stockReservado: newReservado },
-        }),
-      ]);
+      const newFisico = isDecrease ? stockFisico - opts.quantity : stockFisico + opts.quantity;
+
+      await tx.warehouseStock.update({
+        where: { id: stock.id },
+        data: { stockFisico: newFisico },
+      });
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          productId: opts.productId,
+          warehouseId: opts.warehouseId,
+          type: opts.type,
+          quantity: opts.quantity,
+          stockFisicoAntes: stockFisico,
+          stockFisicoDespues: newFisico,
+          stockReservadoAntes: stockReservado,
+          stockReservadoDespues: stockReservado,
+          referenceType: opts.referenceType,
+          referenceId: opts.referenceId,
+          notes: opts.notes,
+          operatorId: opts.operatorId,
+          operatorName: opts.operatorName,
+        },
+      });
 
       return {
         movement,
         stockActual: {
           stockFisico: newFisico,
-          stockReservado: newReservado,
-          stockDisponible: newFisico - newReservado,
+          stockReservado,
+          stockDisponible: newFisico - stockReservado,
         },
       };
     });
@@ -94,11 +82,34 @@ export class StockService {
     operatorId: string;
     operatorName: string;
   }) {
+    if (opts.fromWarehouseId === opts.toWarehouseId) {
+      throw new BadRequestException({ error: 'SAME_WAREHOUSE', message: 'El almacén origen y destino deben ser distintos' });
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      const fromStock = await tx.warehouseStock.findUnique({
+      const destination = await tx.warehouse.findUnique({ where: { id: opts.toWarehouseId } });
+      if (!destination || !destination.active) {
+        throw new NotFoundException({ error: 'WAREHOUSE_NOT_FOUND', message: 'El almacén destino no existe o está inactivo' });
+      }
+
+      const origin = await tx.warehouseStock.findUnique({
         where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.fromWarehouseId } },
+        select: { id: true },
       });
-      if (!fromStock) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en el almacén origen' });
+      if (!origin) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en el almacén origen' });
+
+      await tx.$executeRaw`
+        INSERT INTO warehouse_stock (id, "productId", "warehouseId")
+        VALUES (gen_random_uuid()::text, ${opts.productId}, ${opts.toWarehouseId})
+        ON CONFLICT ("productId", "warehouseId") DO NOTHING`;
+
+      // Lock in a deterministic order so opposite-direction transfers cannot deadlock.
+      const locked = new Map<string, WarehouseStock>();
+      for (const warehouseId of [opts.fromWarehouseId, opts.toWarehouseId].sort()) {
+        locked.set(warehouseId, (await this.lockStock(tx, opts.productId, warehouseId))!);
+      }
+      const fromStock = locked.get(opts.fromWarehouseId)!;
+      const toStock = locked.get(opts.toWarehouseId)!;
 
       const disponible = fromStock.stockFisico - fromStock.stockReservado;
       if (disponible < opts.quantity) {
@@ -109,64 +120,70 @@ export class StockService {
         });
       }
 
-      const toStock = await tx.warehouseStock.findUnique({
-        where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.toWarehouseId } },
-      });
-
       const newFromFisico = fromStock.stockFisico - opts.quantity;
-      const newToFisico = (toStock?.stockFisico ?? 0) + opts.quantity;
+      const newToFisico = toStock.stockFisico + opts.quantity;
 
-      const [outMov, inMov] = await Promise.all([
-        tx.stockMovement.create({
-          data: {
-            productId: opts.productId,
-            warehouseId: opts.fromWarehouseId,
-            type: 'salida_traslado',
-            quantity: opts.quantity,
-            stockFisicoAntes: fromStock.stockFisico,
-            stockFisicoDespues: newFromFisico,
-            stockReservadoAntes: fromStock.stockReservado,
-            stockReservadoDespues: fromStock.stockReservado,
-            notes: opts.notes,
-            operatorId: opts.operatorId,
-            operatorName: opts.operatorName,
-          },
-        }),
-        tx.stockMovement.create({
-          data: {
-            productId: opts.productId,
-            warehouseId: opts.toWarehouseId,
-            type: 'entrada_traslado',
-            quantity: opts.quantity,
-            stockFisicoAntes: toStock?.stockFisico ?? 0,
-            stockFisicoDespues: newToFisico,
-            stockReservadoAntes: toStock?.stockReservado ?? 0,
-            stockReservadoDespues: toStock?.stockReservado ?? 0,
-            notes: opts.notes,
-            operatorId: opts.operatorId,
-            operatorName: opts.operatorName,
-          },
-        }),
-        tx.warehouseStock.update({
-          where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.fromWarehouseId } },
-          data: { stockFisico: newFromFisico },
-        }),
-        toStock
-          ? tx.warehouseStock.update({
-              where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.toWarehouseId } },
-              data: { stockFisico: newToFisico },
-            })
-          : tx.warehouseStock.create({
-              data: {
-                productId: opts.productId,
-                warehouseId: opts.toWarehouseId,
-                stockFisico: opts.quantity,
-              },
-            }),
-      ]);
+      await tx.warehouseStock.update({ where: { id: fromStock.id }, data: { stockFisico: newFromFisico } });
+      await tx.warehouseStock.update({ where: { id: toStock.id }, data: { stockFisico: newToFisico } });
+
+      const outMov = await tx.stockMovement.create({
+        data: {
+          productId: opts.productId,
+          warehouseId: opts.fromWarehouseId,
+          type: 'salida_traslado',
+          quantity: opts.quantity,
+          stockFisicoAntes: fromStock.stockFisico,
+          stockFisicoDespues: newFromFisico,
+          stockReservadoAntes: fromStock.stockReservado,
+          stockReservadoDespues: fromStock.stockReservado,
+          referenceType: 'transfer',
+          notes: opts.notes,
+          operatorId: opts.operatorId,
+          operatorName: opts.operatorName,
+        },
+      });
+      const inMov = await tx.stockMovement.create({
+        data: {
+          productId: opts.productId,
+          warehouseId: opts.toWarehouseId,
+          type: 'entrada_traslado',
+          quantity: opts.quantity,
+          stockFisicoAntes: toStock.stockFisico,
+          stockFisicoDespues: newToFisico,
+          stockReservadoAntes: toStock.stockReservado,
+          stockReservadoDespues: toStock.stockReservado,
+          referenceType: 'transfer',
+          referenceId: outMov.id,
+          notes: opts.notes,
+          operatorId: opts.operatorId,
+          operatorName: opts.operatorName,
+        },
+      });
 
       return { movements: [outMov, inMov] };
     });
+  }
+
+  async updateStockSettings(opts: {
+    productId: string;
+    warehouseId: string;
+    location?: string | null;
+    minStock?: number;
+  }) {
+    try {
+      return await this.prisma.warehouseStock.update({
+        where: { productId_warehouseId: { productId: opts.productId, warehouseId: opts.warehouseId } },
+        data: {
+          ...(opts.location !== undefined && { location: opts.location ?? '' }),
+          ...(opts.minStock !== undefined && { minStock: opts.minStock }),
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'El producto no tiene stock registrado en este almacén' });
+      }
+      throw e;
+    }
   }
 
   async findMovements(opts: {
@@ -178,14 +195,15 @@ export class StockService {
     page: number;
     limit: number;
   }) {
-    const where: any = {};
+    const where: Prisma.StockMovementWhereInput = {};
     if (opts.productId) where.productId = opts.productId;
     if (opts.warehouseId) where.warehouseId = opts.warehouseId;
     if (opts.type) where.type = opts.type;
     if (opts.dateFrom || opts.dateTo) {
-      where.createdAt = {};
-      if (opts.dateFrom) where.createdAt.gte = new Date(opts.dateFrom);
-      if (opts.dateTo) where.createdAt.lte = new Date(opts.dateTo);
+      where.createdAt = {
+        ...(opts.dateFrom && { gte: new Date(opts.dateFrom) }),
+        ...(opts.dateTo && { lte: new Date(opts.dateTo) }),
+      };
     }
 
     const [data, total] = await Promise.all([
@@ -198,5 +216,13 @@ export class StockService {
     ]);
 
     return { data, meta: buildMeta(total, opts.page, opts.limit) };
+  }
+
+  private async lockStock(tx: Prisma.TransactionClient, productId: string, warehouseId: string) {
+    const rows = await tx.$queryRaw<WarehouseStock[]>`
+      SELECT * FROM warehouse_stock
+      WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId}
+      FOR UPDATE`;
+    return rows[0] ?? null;
   }
 }
