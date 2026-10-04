@@ -321,8 +321,7 @@ Content-Type: application/json
     @Param('id') orderId: string,
     @Param('itemId') itemId: string,
     @Body() body: { pickedQuantity: number },
-    @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user.id, user.name);
+    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity);
   }
 }

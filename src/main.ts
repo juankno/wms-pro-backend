@@ -7,7 +7,6 @@ import helmet from 'helmet';
 import * as path from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 function validateEnv() {
   const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
@@ -70,7 +69,6 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new TransformInterceptor());
 
   const config = new DocumentBuilder()
     .setTitle('WMS Pro API')
@@ -160,4 +158,4 @@ Todas las listas devuelven:
   logger.log(`Health check → http://localhost:${port}/health`);
 }
 
-bootstrap();
+void bootstrap();

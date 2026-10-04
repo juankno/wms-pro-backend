@@ -12,7 +12,7 @@ async function main() {
     create: { name: 'Bodega Principal Bogota', code: 'BOG-01', address: 'Cra 30 # 45-60, Bogota' },
   });
 
-  const medellin = await prisma.warehouse.upsert({
+  await prisma.warehouse.upsert({
     where: { code: 'MED-01' },
     update: {},
     create: { name: 'Bodega Medellin', code: 'MED-01', address: 'Calle 50 # 55-20, Medellin' },
@@ -76,7 +76,7 @@ async function main() {
 
   const avail = created.filter((p) => p.stock >= 5);
 
-  const pk3 = await prisma.pickingOrder.create({
+  await prisma.pickingOrder.create({
     data: { reference: 'PK-2025-0001', client: 'Constructora Bolivar', warehouseId: bogota.id, status: 'pending', priority: 'high', assignedToId: operario.id, createdById: supervisor.id, items: { create: [{ productId: avail[0].id, productCode: avail[0].code, productName: avail[0].name, quantity: 3, pickedQuantity: 0, reservedQuantity: 0, unit: 'UND', location: 'A-01-01' }] } },
   });
 

@@ -3,13 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   UnprocessableEntityException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../activity/activity.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { OrderStatus, Role } from '@prisma/client';
+import { OrderStatus, Prisma, Priority, Role } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
 
@@ -33,9 +32,8 @@ export class PickingService {
     page: number;
     limit: number;
   }) {
-    const where: any = {};
-    if (opts.role === Role.operator) where.warehouseId = opts.warehouseId;
-    else if (opts.role === Role.supervisor) where.warehouseId = opts.warehouseId;
+    const where: Prisma.PickingOrderWhereInput = {};
+    if (opts.role !== Role.admin) where.warehouseId = opts.warehouseId;
     if (opts.status) where.status = opts.status;
     if (opts.assignedTo) where.assignedToId = opts.assignedTo;
     if (opts.search) {
@@ -45,9 +43,10 @@ export class PickingService {
       ];
     }
     if (opts.from || opts.to) {
-      where.createdAt = {};
-      if (opts.from) where.createdAt.gte = new Date(opts.from);
-      if (opts.to) where.createdAt.lte = new Date(opts.to);
+      where.createdAt = {
+        ...(opts.from && { gte: new Date(opts.from) }),
+        ...(opts.to && { lte: new Date(opts.to) }),
+      };
     }
 
     const [data, total] = await Promise.all([
@@ -76,14 +75,14 @@ export class PickingService {
     reference: string;
     client: string;
     warehouseId: string;
-    priority?: any;
+    priority?: Priority;
     assignedToId?: string;
     notes?: string;
     items: { productId: string; quantity: number }[];
     createdById: string;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      const stockErrors: any[] = [];
+      const stockErrors: { productId: string; productCode: string; solicitado: number; disponible: number }[] = [];
 
       for (const item of data.items) {
         const stock = await tx.warehouseStock.findUnique({
@@ -212,7 +211,7 @@ export class PickingService {
     });
   }
 
-  async updateItem(orderId: string, itemId: string, pickedQuantity: number, userId: string, userName: string) {
+  async updateItem(orderId: string, itemId: string, pickedQuantity: number) {
     const order = await this.findById(orderId);
     const item = order.items.find((i) => i.id === itemId);
     if (!item) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Ítem no encontrado' });
@@ -253,7 +252,7 @@ export class PickingService {
     });
   }
 
-  async update(id: string, data: Partial<{ client: string; notes: string; priority: any; assignedToId: string }>) {
+  async update(id: string, data: Partial<{ client: string; notes: string; priority: Priority; assignedToId: string }>) {
     await this.findById(id);
     return this.prisma.pickingOrder.update({ where: { id }, data: { ...data, updatedAt: new Date() } });
   }

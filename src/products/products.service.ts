@@ -8,7 +8,7 @@ import { UploadsService } from '../uploads/uploads.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, WarehouseStock } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
@@ -152,9 +152,9 @@ export class ProductsService {
     return updated;
   }
 
-  private attachStock(product: any, warehouseId: string) {
-    const ws = product.warehouseStock?.[0] ?? null;
-    const { warehouseStock: _ws, ...rest } = product;
+  private attachStock<T extends { warehouseStock?: WarehouseStock[] }>(product: T, warehouseId: string) {
+    const { warehouseStock, ...rest } = product;
+    const ws = warehouseStock?.[0] ?? null;
     return {
       ...rest,
       warehouseStock: ws

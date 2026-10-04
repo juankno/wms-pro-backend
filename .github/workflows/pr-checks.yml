@@ -1,0 +1,34 @@
+name: pr-checks
+
+on:
+  pull_request:
+
+jobs:
+  branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          if echo "$BRANCH" | grep -Eq '^(feature|fix|chore|refactor)/[a-z0-9._-]+$'; then
+            echo "OK: $BRANCH"
+          else
+            echo "::error::Branch '$BRANCH' does not follow the naming standard."
+            echo "Format: (feature|fix|chore|refactor)/<ticket>-<short-slug>"
+            exit 1
+          fi
+
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm install -g @commitlint/cli @commitlint/config-conventional
+      - name: Validate commit messages
+        run: |
+          echo "module.exports = { extends: ['@commitlint/config-conventional'] };" > commitlint.config.cjs
+          npx commitlint --from "${{ github.event.pull_request.base.sha }}" \
+                         --to "${{ github.event.pull_request.head.sha }}" --verbose

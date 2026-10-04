@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../activity/activity.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { OrderStatus, Role } from '@prisma/client';
+import { OrderStatus, Prisma, Role } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
 
@@ -31,7 +31,7 @@ export class PackingService {
     page: number;
     limit: number;
   }) {
-    const where: any = {};
+    const where: Prisma.PackingOrderWhereInput = {};
     if (opts.role !== Role.admin) where.warehouseId = opts.warehouseId;
     if (opts.status) where.status = opts.status;
     if (opts.assignedTo) where.assignedToId = opts.assignedTo;
@@ -42,9 +42,10 @@ export class PackingService {
       ];
     }
     if (opts.from || opts.to) {
-      where.createdAt = {};
-      if (opts.from) where.createdAt.gte = new Date(opts.from);
-      if (opts.to) where.createdAt.lte = new Date(opts.to);
+      where.createdAt = {
+        ...(opts.from && { gte: new Date(opts.from) }),
+        ...(opts.to && { lte: new Date(opts.to) }),
+      };
     }
 
     const [data, total] = await Promise.all([

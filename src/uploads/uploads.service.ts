@@ -60,7 +60,7 @@ export class UploadsService {
     const filename = `${id}${ext}`;
     const filepath = path.join(this.uploadDir, filename);
 
-    fs.writeFileSync(filepath, buffer);
+    await fs.promises.writeFile(filepath, buffer);
 
     return { id, url: this.getPublicUrl(filename) };
   }
