@@ -5,6 +5,7 @@ import { TenantStatus } from '@prisma/client';
 import { JwtPayload, AuthUser } from '../../common/types/request-with-user.interface';
 import { UsersService } from '../../users/users.service';
 import { authConfig } from '../../config/env';
+import { effectivePermissions } from '../permissions';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -25,6 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: user.id,
       sub: user.id,
       tenantId: user.tenantId,
+      permissions: effectivePermissions(user.role, user.customRole?.permissions),
       username: user.username,
       name: user.name,
       role: user.role,

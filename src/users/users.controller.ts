@@ -6,22 +6,22 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  @Roles('admin', 'supervisor')
+  @RequirePermissions('users.read')
   @ApiOperation({ summary: 'Listar todos los usuarios' })
   @ApiResponse({ status: 200, description: 'Lista de usuarios' })
   findAll() {
@@ -38,7 +38,7 @@ export class UsersController {
   }
 
   @Post()
-  @Roles('admin')
+  @RequirePermissions('users.manage')
   @ApiOperation({ summary: 'Crear usuario (solo admin)' })
   @ApiResponse({ status: 201, description: 'Usuario creado' })
   create(@Body() dto: CreateUserDto) {
@@ -46,7 +46,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles('admin')
+  @RequirePermissions('users.manage')
   @ApiOperation({ summary: 'Actualizar o activar/desactivar usuario (solo admin)' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, description: 'Usuario actualizado' })

@@ -1,12 +1,11 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { IsDateString, IsOptional, IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Roles } from '../common/decorators/roles.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { AuditService } from './audit.service';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 class AuditQueryDto extends PaginationDto {
   @ApiPropertyOptional() @IsOptional() @IsString() actorId?: string;
@@ -18,13 +17,13 @@ class AuditQueryDto extends PaginationDto {
 
 @ApiTags('audit')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('audit')
 export class AuditController {
   constructor(private auditService: AuditService) {}
 
   @Get()
-  @Roles(Role.admin)
+  @RequirePermissions('audit.read')
   @ApiOperation({
     summary: 'Registro de auditoría de la empresa',
     description: 'Cambios hechos por los usuarios (crear, actualizar, eliminar), con los datos enviados y los secretos censurados.',

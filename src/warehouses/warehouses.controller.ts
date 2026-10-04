@@ -1,11 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/warehouse.dto';
 import { WarehousesService } from './warehouses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 const WAREHOUSE_EXAMPLE = {
   id: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec',
@@ -19,7 +18,7 @@ const WAREHOUSE_EXAMPLE = {
 
 @ApiTags('warehouses')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('warehouses')
 export class WarehousesController {
   constructor(private warehousesService: WarehousesService) {}
@@ -41,7 +40,7 @@ export class WarehousesController {
   }
 
   @Post()
-  @Roles(Role.admin)
+  @RequirePermissions('warehouses.manage')
   @ApiOperation({ summary: 'Crear almacén', description: 'Crea un nuevo almacén. **Requiere rol admin.**' })
   @ApiResponse({ status: 201, description: 'Almacén creado', schema: { example: WAREHOUSE_EXAMPLE } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado' } } })
@@ -51,7 +50,7 @@ export class WarehousesController {
   }
 
   @Patch(':id')
-  @Roles(Role.admin)
+  @RequirePermissions('warehouses.manage')
   @ApiOperation({ summary: 'Editar almacén', description: 'Actualiza nombre, dirección o estado activo. **Requiere rol admin.**' })
   @ApiParam({ name: 'id', example: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec' })
   @ApiResponse({ status: 200, description: 'Almacén actualizado', schema: { example: WAREHOUSE_EXAMPLE } })

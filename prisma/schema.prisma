@@ -61,23 +61,25 @@ model Tenant {
   packingOrders  PackingOrder[]
   activityLogs   ActivityLog[]
   auditLogs      AuditLog[]
+  roles          TenantRole[]
 
   @@map("tenants")
 }
 
 model User {
-  id          String   @id @default(uuid())
-  tenantId    String
-  username    String
-  name        String
-  email       String
-  password    String
-  role        Role     @default(operator)
-  warehouseId String?
-  pushToken   String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  tenantId     String
+  username     String
+  name         String
+  email        String
+  password     String
+  role         Role     @default(operator)
+  customRoleId String?
+  warehouseId  String?
+  pushToken    String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id])
   refreshTokens   RefreshToken[]
@@ -88,6 +90,7 @@ model User {
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  customRole      TenantRole?     @relation(fields: [customRoleId], references: [id])
 
   @@unique([tenantId, username])
   @@unique([tenantId, email])
@@ -368,4 +371,21 @@ model PlatformAdmin {
   updatedAt DateTime @updatedAt
 
   @@map("platform_admins")
+}
+
+// Tenant-defined role; when assigned it replaces the permissions of the user's base role.
+model TenantRole {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@map("tenant_roles")
 }

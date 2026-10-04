@@ -17,6 +17,7 @@ const USER_SELECT = {
   createdAt: true,
   updatedAt: true,
   warehouse: { select: { id: true, name: true, code: true } },
+  customRole: { select: { id: true, name: true } },
 } as const;
 
 @Injectable()
@@ -29,12 +30,19 @@ export class UsersService {
   findByUsername(tenantId: string, username: string) {
     return this.prisma.user.findUnique({
       where: { tenantId_username: { tenantId, username } },
-      include: { warehouse: true },
+      include: { warehouse: true, customRole: true },
     });
   }
 
+  // Custom roles are tenant-scoped, so a role of another tenant is not found.
+  private async assertCustomRoleExists(customRoleId?: string | null) {
+    if (!customRoleId) return;
+    const role = await this.prisma.tenantRole.findUnique({ where: { id: customRoleId } });
+    if (!role) throw new NotFoundException({ error: 'ROLE_NOT_FOUND', message: 'Rol no encontrado' });
+  }
+
   findById(id: string) {
-    return this.prisma.user.findUnique({ where: { id }, include: { tenant: true } });
+    return this.prisma.user.findUnique({ where: { id }, include: { tenant: true, customRole: true } });
   }
 
   findAll() {
@@ -58,8 +66,10 @@ export class UsersService {
     password: string;
     role: Role;
     warehouseId?: string | null;
+    customRoleId?: string;
   }) {
     await this.planLimits.assertCanCreate('users');
+    await this.assertCustomRoleExists(data.customRoleId);
     const hashed = await bcrypt.hash(data.password, 10);
     const { warehouseId, ...rest } = data;
     const createData: Prisma.UserUncheckedCreateInput = {
@@ -80,9 +90,11 @@ export class UsersService {
       role?: Role;
       warehouseId?: string | null;
       active?: boolean;
+      customRoleId?: string | null;
     },
     actor: AuthUser,
   ) {
+    await this.assertCustomRoleExists(data.customRoleId);
     const target = await this.prisma.user.findUnique({ where: { id } });
     if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND', message: 'Usuario no encontrado' });
 
