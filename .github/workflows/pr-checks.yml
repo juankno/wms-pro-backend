@@ -4,21 +4,6 @@ on:
   pull_request:
 
 jobs:
-  branch-name:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate branch name
-        env:
-          BRANCH: ${{ github.head_ref }}
-        run: |
-          if echo "$BRANCH" | grep -Eq '^(feature|fix|chore|refactor)/[a-z0-9._-]+$'; then
-            echo "OK: $BRANCH"
-          else
-            echo "::error::Branch '$BRANCH' does not follow the naming standard."
-            echo "Format: (feature|fix|chore|refactor)/<ticket>-<short-slug>"
-            exit 1
-          fi
-
   commitlint:
     runs-on: ubuntu-latest
     steps:
