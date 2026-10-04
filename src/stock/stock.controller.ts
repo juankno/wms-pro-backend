@@ -27,10 +27,10 @@ const MOVEMENT_EXAMPLE = {
   warehouseName: 'Bogotá',
   type: 'purchase_receipt',
   quantity: 50,
-  stockFisicoAntes: 0,
-  stockFisicoDespues: 50,
-  stockReservadoAntes: 0,
-  stockReservadoDespues: 0,
+  onHandBefore: 0,
+  onHandAfter: 50,
+  reservedBefore: 0,
+  reservedAfter: 0,
   referenceType: 'manual',
   referenceId: null,
   notes: 'Ingreso inicial',
@@ -42,7 +42,7 @@ const MOVEMENT_EXAMPLE = {
 const ERR_401 = { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado', requestId: 'req_abc123' };
 const ERR_403 = { error: 'WAREHOUSE_FORBIDDEN', message: 'No tienes acceso a este almacén', requestId: 'req_abc123' };
 const ERR_404_PRODUCT = { error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado', requestId: 'req_abc123' };
-const ERR_409_STOCK = { error: 'STOCK_INSUFICIENTE', message: 'Stock disponible insuficiente para la operación', requestId: 'req_abc123' };
+const ERR_409_STOCK = { error: 'INSUFFICIENT_STOCK', message: 'Stock disponible insuficiente para la operación', requestId: 'req_abc123' };
 const ERR_422 = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos', details: [{ field: 'quantity', message: 'must be a positive number' }], requestId: 'req_abc123' };
 
 @ApiTags('stock')
@@ -234,7 +234,7 @@ Genera dos movimientos inmutables:
 
 Requiere rol **supervisor** o superior y acceso al almacén origen. Origen y destino deben ser distintos (\`400 SAME_WAREHOUSE\`).
 
-Si el stock disponible en origen es insuficiente devuelve \`409 STOCK_INSUFICIENTE\`.
+Si el stock disponible en origen es insuficiente devuelve \`409 INSUFFICIENT_STOCK\`.
 
 **Ejemplo de llamada:**
 \`\`\`http

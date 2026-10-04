@@ -314,19 +314,19 @@ export class PackingService {
 
       const release = reserved.get(productId) ?? 0;
       const quantity = shipped.get(productId) ?? 0;
-      const fisicoDespues = stock.stockFisico - quantity;
-      const reservadoDespues = stock.stockReservado - release;
+      const fisicoDespues = stock.onHand - quantity;
+      const reservadoDespues = stock.reserved - release;
       if (fisicoDespues < reservadoDespues) {
         throw new ConflictException({
-          error: 'STOCK_INSUFICIENTE',
+          error: 'INSUFFICIENT_STOCK',
           message: 'El stock físico no alcanza para despachar sin afectar otras reservas',
-          details: [{ productId, requested: quantity, available: stock.stockFisico - reservadoDespues }],
+          details: [{ productId, requested: quantity, available: stock.onHand - reservadoDespues }],
         });
       }
 
       await tx.warehouseStock.update({
         where: { id: stock.id },
-        data: { stockFisico: fisicoDespues, stockReservado: reservadoDespues },
+        data: { onHand: fisicoDespues, reserved: reservadoDespues },
       });
 
       if (quantity > 0) {
@@ -336,10 +336,10 @@ export class PackingService {
             warehouseId: order.warehouseId,
             type: 'order_shipment',
             quantity,
-            stockFisicoAntes: stock.stockFisico,
-            stockFisicoDespues: fisicoDespues,
-            stockReservadoAntes: stock.stockReservado,
-            stockReservadoDespues: reservadoDespues,
+            onHandBefore: stock.onHand,
+            onHandAfter: fisicoDespues,
+            reservedBefore: stock.reserved,
+            reservedAfter: reservadoDespues,
             referenceType: 'packing',
             referenceId: order.id,
             operatorId: user.id,

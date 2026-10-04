@@ -64,11 +64,11 @@ async function main() {
     await prisma.warehouseStock.upsert({
       where: { productId_warehouseId: { productId: product.id, warehouseId: bogota.id } },
       update: {},
-      create: { productId: product.id, warehouseId: bogota.id, location: locs[i % locs.length], minStock: p.minStock, stockFisico: p.stock, stockReservado: 0 },
+      create: { productId: product.id, warehouseId: bogota.id, location: locs[i % locs.length], minStock: p.minStock, onHand: p.stock, reserved: 0 },
     });
     if (p.stock > 0) {
       await prisma.stockMovement.create({
-        data: { productId: product.id, warehouseId: bogota.id, type: MovementType.opening_balance, quantity: p.stock, stockFisicoAntes: 0, stockFisicoDespues: p.stock, stockReservadoAntes: 0, stockReservadoDespues: 0, referenceType: 'seed', notes: 'Inventario inicial', operatorId: admin.id, operatorName: admin.name },
+        data: { productId: product.id, warehouseId: bogota.id, type: MovementType.opening_balance, quantity: p.stock, onHandBefore: 0, onHandAfter: p.stock, reservedBefore: 0, reservedAfter: 0, referenceType: 'seed', notes: 'Inventario inicial', operatorId: admin.id, operatorName: admin.name },
       });
     }
     created.push({ id: product.id, code: p.code, name: p.name, stock: p.stock });

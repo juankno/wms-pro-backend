@@ -16,8 +16,8 @@ type StockRow = {
   name: string;
   category: string;
   warehouseId: string;
-  stockFisico: number;
-  stockReservado: number;
+  onHand: number;
+  reserved: number;
   minStock: number;
   location: string;
 };
@@ -31,9 +31,9 @@ function toStockItem(row: StockRow) {
     name: row.name,
     category: row.category,
     warehouseId: row.warehouseId,
-    stockFisico: row.stockFisico,
-    stockReservado: row.stockReservado,
-    stockDisponible: Math.max(0, row.stockFisico - row.stockReservado),
+    onHand: row.onHand,
+    reserved: row.reserved,
+    available: Math.max(0, row.onHand - row.reserved),
     minStock: row.minStock,
     location: row.location,
   };
@@ -70,10 +70,10 @@ export class ReportsService {
         totalReserved: stockSummary.totalReserved,
       },
       movements: {
-        entradasHoy: movementsToday.inbound.count,
-        salidasHoy: movementsToday.outbound.count,
-        unidadesEntradasHoy: movementsToday.inbound.totalUnits,
-        unidadesSalidasHoy: movementsToday.outbound.totalUnits,
+        inboundToday: movementsToday.inbound.count,
+        outboundToday: movementsToday.outbound.count,
+        inboundUnitsToday: movementsToday.inbound.totalUnits,
+        outboundUnitsToday: movementsToday.outbound.totalUnits,
       },
     };
   }
@@ -137,8 +137,8 @@ export class ReportsService {
     return {
       warehouseId: warehouseId ?? null,
       period: { from: from ?? null, to: to ?? null },
-      entradas: totals.inbound,
-      salidas: totals.outbound,
+      inbound: totals.inbound,
+      outbound: totals.outbound,
       byType: totals.byType,
     };
   }
@@ -152,7 +152,7 @@ export class ReportsService {
         count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.out})::int AS "outOfStock",
         count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.low})::int AS "lowStock",
         count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.ok})::int AS "ok",
-        coalesce(sum(ws."stockReservado"), 0)::int AS "totalReserved"
+        coalesce(sum(ws."reserved"), 0)::int AS "totalReserved"
       FROM warehouse_stock ws
       JOIN products p ON p.id = ws."productId" AND p.active
       WHERE ${warehouseCondition(warehouseId)}`;
@@ -162,11 +162,11 @@ export class ReportsService {
   private stockRows(warehouseId: string | undefined, condition: Prisma.Sql) {
     return this.prisma.$queryRaw<StockRow[]>`
       SELECT p.id, p.code, p.name, p.category, ws."warehouseId",
-             ws."stockFisico", ws."stockReservado", ws."minStock", ws.location
+             ws."onHand", ws."reserved", ws."minStock", ws.location
       FROM warehouse_stock ws
       JOIN products p ON p.id = ws."productId" AND p.active
       WHERE ${warehouseCondition(warehouseId)} AND ${condition}
-      ORDER BY (ws."stockFisico" - ws."stockReservado"), p.name`;
+      ORDER BY (ws."onHand" - ws."reserved"), p.name`;
   }
 
   private async movementTotals(where: Prisma.StockMovementWhereInput) {

@@ -96,8 +96,8 @@ Authorization: Bearer eyJ...
       example: {
         warehouseId: 'wh_001',
         summary: { total: 20, outOfStock: 3, lowStock: 5, ok: 12 },
-        outOfStock: [{ id: 'p005', code: 'FLT-0005', name: 'Filtro CAT', stockFisico: 0, stockReservado: 0, stockDisponible: 0, minStock: 5, location: 'A-01-07' }],
-        lowStock: [{ id: 'p006', code: 'FLT-0006', name: 'Filtro Aire', stockFisico: 3, stockReservado: 0, stockDisponible: 3, minStock: 5, location: 'A-01-08' }],
+        outOfStock: [{ id: 'p005', code: 'FLT-0005', name: 'Filtro CAT', onHand: 0, reserved: 0, available: 0, minStock: 5, location: 'A-01-07' }],
+        lowStock: [{ id: 'p006', code: 'FLT-0006', name: 'Filtro Aire', onHand: 3, reserved: 0, available: 3, minStock: 5, location: 'A-01-08' }],
       },
     },
   })
@@ -163,8 +163,8 @@ Authorization: Bearer eyJ...
       example: {
         warehouseId: 'wh_001',
         period: { from: '2025-09-01', to: null },
-        entradas: { count: 5, totalUnits: 200 },
-        salidas: { count: 12, totalUnits: 310 },
+        inbound: { count: 5, totalUnits: 200 },
+        outbound: { count: 12, totalUnits: 310 },
         byType: { purchase_receipt: { count: 3, totalUnits: 150 } },
       },
     },

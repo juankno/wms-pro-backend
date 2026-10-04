@@ -24,25 +24,25 @@ export class StockService {
       const stock = await lockWarehouseStock(tx, opts.productId, opts.warehouseId);
       if (!stock) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en este almacén' });
 
-      const { stockFisico, stockReservado } = stock;
+      const { onHand, reserved } = stock;
       const isDecrease = opts.type === 'adjustment_decrease';
 
       if (isDecrease) {
-        const disponible = stockFisico - stockReservado;
-        if (disponible < opts.quantity) {
+        const available = onHand - reserved;
+        if (available < opts.quantity) {
           throw new ConflictException({
-            error: 'STOCK_INSUFICIENTE',
+            error: 'INSUFFICIENT_STOCK',
             message: `Stock disponible insuficiente para completar la operación`,
-            details: [{ productId: opts.productId, requested: opts.quantity, available: disponible }],
+            details: [{ productId: opts.productId, requested: opts.quantity, available }],
           });
         }
       }
 
-      const newFisico = isDecrease ? stockFisico - opts.quantity : stockFisico + opts.quantity;
+      const newFisico = isDecrease ? onHand - opts.quantity : onHand + opts.quantity;
 
       await tx.warehouseStock.update({
         where: { id: stock.id },
-        data: { stockFisico: newFisico },
+        data: { onHand: newFisico },
       });
 
       const movement = await tx.stockMovement.create({
@@ -51,10 +51,10 @@ export class StockService {
           warehouseId: opts.warehouseId,
           type: opts.type,
           quantity: opts.quantity,
-          stockFisicoAntes: stockFisico,
-          stockFisicoDespues: newFisico,
-          stockReservadoAntes: stockReservado,
-          stockReservadoDespues: stockReservado,
+          onHandBefore: onHand,
+          onHandAfter: newFisico,
+          reservedBefore: reserved,
+          reservedAfter: reserved,
           referenceType: opts.referenceType,
           referenceId: opts.referenceId,
           notes: opts.notes,
@@ -66,9 +66,9 @@ export class StockService {
       return {
         movement,
         stockActual: {
-          stockFisico: newFisico,
-          stockReservado,
-          stockDisponible: newFisico - stockReservado,
+          onHand: newFisico,
+          reserved,
+          available: newFisico - reserved,
         },
       };
     });
@@ -112,20 +112,20 @@ export class StockService {
       const fromStock = locked.get(opts.fromWarehouseId)!;
       const toStock = locked.get(opts.toWarehouseId)!;
 
-      const disponible = fromStock.stockFisico - fromStock.stockReservado;
-      if (disponible < opts.quantity) {
+      const available = fromStock.onHand - fromStock.reserved;
+      if (available < opts.quantity) {
         throw new ConflictException({
-          error: 'STOCK_INSUFICIENTE',
-          message: `Disponible en almacén origen: ${disponible}. Solicitado: ${opts.quantity}.`,
-          details: [{ productId: opts.productId, requested: opts.quantity, available: disponible }],
+          error: 'INSUFFICIENT_STOCK',
+          message: `Disponible en almacén origen: ${available}. Solicitado: ${opts.quantity}.`,
+          details: [{ productId: opts.productId, requested: opts.quantity, available }],
         });
       }
 
-      const newFromFisico = fromStock.stockFisico - opts.quantity;
-      const newToFisico = toStock.stockFisico + opts.quantity;
+      const newFromFisico = fromStock.onHand - opts.quantity;
+      const newToFisico = toStock.onHand + opts.quantity;
 
-      await tx.warehouseStock.update({ where: { id: fromStock.id }, data: { stockFisico: newFromFisico } });
-      await tx.warehouseStock.update({ where: { id: toStock.id }, data: { stockFisico: newToFisico } });
+      await tx.warehouseStock.update({ where: { id: fromStock.id }, data: { onHand: newFromFisico } });
+      await tx.warehouseStock.update({ where: { id: toStock.id }, data: { onHand: newToFisico } });
 
       const outMov = await tx.stockMovement.create({
         data: {
@@ -133,10 +133,10 @@ export class StockService {
           warehouseId: opts.fromWarehouseId,
           type: 'transfer_out',
           quantity: opts.quantity,
-          stockFisicoAntes: fromStock.stockFisico,
-          stockFisicoDespues: newFromFisico,
-          stockReservadoAntes: fromStock.stockReservado,
-          stockReservadoDespues: fromStock.stockReservado,
+          onHandBefore: fromStock.onHand,
+          onHandAfter: newFromFisico,
+          reservedBefore: fromStock.reserved,
+          reservedAfter: fromStock.reserved,
           referenceType: 'transfer',
           notes: opts.notes,
           operatorId: opts.operatorId,
@@ -149,10 +149,10 @@ export class StockService {
           warehouseId: opts.toWarehouseId,
           type: 'transfer_in',
           quantity: opts.quantity,
-          stockFisicoAntes: toStock.stockFisico,
-          stockFisicoDespues: newToFisico,
-          stockReservadoAntes: toStock.stockReservado,
-          stockReservadoDespues: toStock.stockReservado,
+          onHandBefore: toStock.onHand,
+          onHandAfter: newToFisico,
+          reservedBefore: toStock.reserved,
+          reservedAfter: toStock.reserved,
           referenceType: 'transfer',
           referenceId: outMov.id,
           notes: opts.notes,
