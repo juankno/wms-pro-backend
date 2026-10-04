@@ -47,7 +47,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           error = 'VALIDATION_ERROR';
           message = 'Datos de entrada inválidos';
           details = (r['message'] as string[]).map((msg) => {
-            const match = msg.match(/^([^.]+)\s(.+)$/);
+            const match = msg.match(/^(\S+)\s(.+)$/);
             return match
               ? { field: match[1], message: match[2] }
               : { field: 'unknown', message: msg };

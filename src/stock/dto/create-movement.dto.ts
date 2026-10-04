@@ -27,12 +27,12 @@ export type ManualMovementType = (typeof MANUAL_MOVEMENT_TYPES)[number];
 export class CreateMovementDto {
   @ApiProperty({ enum: MANUAL_MOVEMENT_TYPES })
   @IsEnum(MANUAL_MOVEMENT_TYPES)
-  type: ManualMovementType;
+  type!: ManualMovementType;
 
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @IsPositive()
-  quantity: number;
+  quantity!: number;
 
   @ApiPropertyOptional({ description: "Defaults to the user's warehouse" })
   @IsOptional()
@@ -48,10 +48,10 @@ export class CreateMovementDto {
 }
 
 export class TransferDto {
-  @ApiProperty() @IsString() @IsNotEmpty() productId: string;
-  @ApiProperty() @IsString() @IsNotEmpty() fromWarehouseId: string;
-  @ApiProperty() @IsString() @IsNotEmpty() toWarehouseId: string;
-  @ApiProperty({ minimum: 1 }) @IsInt() @IsPositive() quantity: number;
+  @ApiProperty() @IsString() @IsNotEmpty() productId!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() fromWarehouseId!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() toWarehouseId!: string;
+  @ApiProperty({ minimum: 1 }) @IsInt() @IsPositive() quantity!: number;
   @ApiPropertyOptional({ maxLength: 500 }) @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 

@@ -218,7 +218,11 @@ export class StockService {
     return { data, meta: buildMeta(total, opts.page, opts.limit) };
   }
 
-  private async lockStock(tx: Prisma.TransactionClient, productId: string, warehouseId: string) {
+  private async lockStock(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    warehouseId: string,
+  ): Promise<WarehouseStock | null> {
     const rows = await tx.$queryRaw<WarehouseStock[]>`
       SELECT * FROM warehouse_stock
       WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId}

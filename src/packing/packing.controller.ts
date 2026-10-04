@@ -74,7 +74,6 @@ const ERR_403 = { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado', reques
 const ERR_404 = { error: 'ORDER_NOT_FOUND', message: 'Orden de packing no encontrada', requestId: 'req_abc123' };
 const ERR_422_STATUS = { error: 'ORDER_INVALID_STATUS', message: 'Transición de estado inválida: completed → in_progress', requestId: 'req_abc123' };
 const ERR_422_PICKING = { error: 'PICKING_INCOMPLETE', message: 'El picking debe estar completado para crear el packing', requestId: 'req_abc123' };
-const ERR_422_VAL = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos', details: [{ field: 'reference', message: 'must not be empty' }], requestId: 'req_abc123' };
 const ERR_409_PICKING = { error: 'ORDER_INVALID_STATUS', message: 'Ya existe un packing para este picking', requestId: 'req_abc123' };
 
 @ApiTags('packing')

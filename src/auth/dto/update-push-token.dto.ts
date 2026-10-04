@@ -7,5 +7,5 @@ export class UpdatePushTokenDto {
     description: 'Token de Expo Notifications para notificaciones push',
   })
   @IsString()
-  pushToken: string;
+  pushToken!: string;
 }

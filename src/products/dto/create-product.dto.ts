@@ -4,11 +4,11 @@ import { IsArray, IsOptional, IsString } from 'class-validator';
 export class CreateProductDto {
   @ApiProperty()
   @IsString()
-  code: string;
+  code!: string;
 
   @ApiProperty()
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -17,7 +17,7 @@ export class CreateProductDto {
 
   @ApiProperty()
   @IsString()
-  category: string;
+  category!: string;
 
   @ApiPropertyOptional()
   @IsOptional()

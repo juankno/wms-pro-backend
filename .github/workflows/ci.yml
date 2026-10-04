@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test:
+    name: Lint, typecheck, tests & coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wms_pro_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wms_pro_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wms_pro_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx prisma migrate deploy
+      - run: npm run test:cov
+      - run: npm run build
+      - run: npm audit --audit-level critical
+      - name: Diff coverage ≥ 80%
+        if: github.event_name == 'pull_request'
+        # Report-only until picking/packing/products have tests (see docs/TESTING.md).
+        continue-on-error: true
+        run: |
+          pip install diff-cover
+          diff-cover coverage/cobertura-coverage.xml \
+            --compare-branch "origin/${{ github.base_ref }}" \
+            --fail-under 80

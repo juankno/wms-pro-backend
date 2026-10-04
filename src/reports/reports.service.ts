@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReportsService {
@@ -61,7 +62,7 @@ export class ReportsService {
 
   async getPickingStats(warehouseId: string, from?: string, to?: string) {
     const dateFilter = this.buildDateFilter(from, to);
-    const where: any = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
+    const where: Prisma.PickingOrderWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
 
     const [total, byStatus, avgItemsRaw] = await Promise.all([
       this.prisma.pickingOrder.count({ where }),
@@ -85,7 +86,7 @@ export class ReportsService {
 
   async getPackingStats(warehouseId: string, from?: string, to?: string) {
     const dateFilter = this.buildDateFilter(from, to);
-    const where: any = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
+    const where: Prisma.PackingOrderWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
 
     const [total, byStatus] = await Promise.all([
       this.prisma.packingOrder.count({ where }),
@@ -136,7 +137,7 @@ export class ReportsService {
 
   async getStockMovementsSummary(warehouseId: string, from?: string, to?: string) {
     const dateFilter = this.buildDateFilter(from, to);
-    const where: any = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
+    const where: Prisma.StockMovementWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
 
     const movements = await this.prisma.stockMovement.findMany({ where });
 
