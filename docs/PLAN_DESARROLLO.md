@@ -59,27 +59,27 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 
 **Backend**
 
-- [ ] B1. Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
-- [ ] B2. `stock.service.ts`: el tipo de movimiento manual no está restringido; `salida_picking` o `entrada_devolucion` se pueden registrar a mano.
-- [ ] B3. `stock.controller.ts` no tiene `RolesGuard` ni comprueba la bodega del usuario: cualquier operario ajusta o traslada en cualquier bodega. Lo mismo pasa con `?warehouseId=` en picking, packing, reportes, `users/warehouse/:id` y `activity/order/:id`.
-- [ ] B4. Un traslado no valida origen ≠ destino ni que el destino exista; con origen = destino crea o destruye stock.
-- [ ] B5. Condiciones de carrera: escritura de valores absolutos sin bloqueo, sin `CHECK >= 0`.
-- [ ] B6. Packing: al completar se descuenta `packedQuantity`, y si es menor que lo recogido la reserva sobrante nunca se libera. Cancelar un packing tampoco libera las reservas. Se puede completar sin empacar todo.
-- [ ] B7. Picking: se puede completar con 0 ítems recogidos. Al crear la orden no se reserva stock (sobreventa).
-- [ ] B8. `activity.log` se escribe con `this.prisma` en vez de `tx` (fuera de la transacción).
-- [ ] B9. Secretos: `main.ts` compara contra un texto que no coincide con los de ejemplo, el JWT usa `'secret'` como valor por defecto, y `JWT_REFRESH_*` y `MAX_FILE_SIZE_MB` no se usan (30 días hardcodeado).
-- [ ] B10. No se detecta la reutilización de refresh tokens, que además se guardan en texto plano.
-- [ ] B11. `ThrottlerModule` está configurado pero no hay `ThrottlerGuard` global.
-- [ ] B12. `/health` responde 200 aunque la BD esté caída.
+- [ ] B1. (Pendiente solo en warehouses) Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
+- [x] B2. `stock.service.ts`: el tipo de movimiento manual no está restringido; `salida_picking` o `entrada_devolucion` se pueden registrar a mano.
+- [x] B3. `stock.controller.ts` no tiene `RolesGuard` ni comprueba la bodega del usuario: cualquier operario ajusta o traslada en cualquier bodega. Lo mismo pasa con `?warehouseId=` en picking, packing, reportes, `users/warehouse/:id` y `activity/order/:id`.
+- [x] B4. Un traslado no valida origen ≠ destino ni que el destino exista; con origen = destino crea o destruye stock.
+- [x] B5. Condiciones de carrera: escritura de valores absolutos sin bloqueo, sin `CHECK >= 0`.
+- [x] B6. Packing: al completar se descuenta `packedQuantity`, y si es menor que lo recogido la reserva sobrante nunca se libera. Cancelar un packing tampoco libera las reservas. Se puede completar sin empacar todo.
+- [x] B7. Picking: se puede completar con 0 ítems recogidos. Al crear la orden no se reserva stock (sobreventa).
+- [x] B8. `activity.log` se escribe con `this.prisma` en vez de `tx` (fuera de la transacción).
+- [x] B9. Secretos: `main.ts` compara contra un texto que no coincide con los de ejemplo, el JWT usa `'secret'` como valor por defecto, y `JWT_REFRESH_*` y `MAX_FILE_SIZE_MB` no se usan (30 días hardcodeado).
+- [x] B10. No se detecta la reutilización de refresh tokens, que además se guardan en texto plano.
+- [x] B11. `ThrottlerModule` está configurado pero no hay `ThrottlerGuard` global.
+- [x] B12. `/health` responde 200 aunque la BD esté caída.
 - [ ] B13. `products.service.ts`: el filtro `stockStatus` se aplica después de paginar, así que el `total` sale mal.
 - [ ] B14. `reports.service.ts` carga tablas enteras en memoria.
-- [ ] B15. `UpdateUserDto.active` no tiene `@IsBoolean`, y un admin puede desactivarse a sí mismo o dejar el sistema sin admin.
-- [ ] B16. Swagger documenta `traslado_entrada/salida`, pero el enum real es `entrada_traslado/salida_traslado`.
+- [x] B15. `UpdateUserDto.active` no tiene `@IsBoolean`, y un admin puede desactivarse a sí mismo o dejar el sistema sin admin.
+- [x] B16. Swagger documenta `traslado_entrada/salida`, pero el enum real es `entrada_traslado/salida_traslado`.
 - [ ] B17. Uploads solo en disco local, sin procesar imágenes ni limpiar huérfanos.
 - [ ] B18. `NotificationsService` (Expo push) nunca se invoca.
-- [ ] B19. Falta un endpoint `/auth/me` (perfil y cambio de la contraseña propia).
+- [x] B19. Falta un endpoint `/auth/me` (perfil y cambio de la contraseña propia).
 - [ ] B20. Docker: corre como root, sin HEALTHCHECK, sin `prisma migrate deploy`, con secretos hardcodeados en `docker-compose.yml`.
-- [ ] B21. Cero tests (no existe `test/jest-e2e.json`) y sin CI.
+- [x] B21. Cero tests (no existe `test/jest-e2e.json`) y sin CI.
 
 **Frontend web**
 
@@ -111,12 +111,12 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión vendible = fases 0, 1, 2, 3, 4 y 6 + cobro básico (≈ 4–5 meses).**
 
 ### Fase 0 — Estabilización (1–2 semanas)
-- [ ] 0.1 Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
-- [ ] 0.2 Backend: guards de rol y de alcance por bodega (B3).
-- [ ] 0.3 Backend: stock atómico, `CHECK >= 0`, validaciones de traslado, reservas correctas en picking y packing, log dentro de la transacción (B4–B8).
-- [ ] 0.4 Backend: seguridad y plataforma: secretos, throttler, health 503, refresh tokens hasheados con detección de reutilización, `/auth/me` (B9–B12, B19).
+- [ ] 0.1 (Falta warehouses) Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
+- [x] 0.2 Backend: guards de rol y de alcance por bodega (B3).
+- [x] 0.3 Backend: stock atómico, `CHECK >= 0`, validaciones de traslado, reservas correctas en picking y packing, log dentro de la transacción (B4–B8).
+- [x] 0.4 Backend: seguridad y plataforma: secretos, throttler, health 503, refresh tokens hasheados con detección de reutilización, `/auth/me` (B9–B12, B19).
 - [ ] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
-- [ ] 0.6 Backend: suite de tests (unitarios + e2e del flujo reserva → picking → packing → descuento) y CI (B21).
+- [x] 0.6 Backend: suite de tests (unitarios + e2e del flujo reserva → picking → packing → descuento) y CI (B21).
 - [ ] 0.7 Frontend: F1–F6.
 - [ ] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
 - [ ] 0.9 Docker y CI en los tres repos (B20, F7, M12).
@@ -185,5 +185,7 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 ## 6. Estado actual
 
 - **Fase en curso:** Fase 0.
-- **Siguiente tarea:** 0.1 / 0.2 / 0.3 en el módulo `stock` del backend.
-- **Notas:** el endpoint `PATCH /stock/products/:productId/warehouse/:warehouseId` (location y minStock) se agregó antes de este plan y se ajusta dentro de la tarea 0.1/0.2.
+- **PRs abiertos (apilados, mergear en orden):** #1 (este plan) → #2 stock → #3 ESLint/CI → #4 picking/packing → #5 auth.
+- **Hecho en el backend:** validación y alcance por almacén en stock, picking, packing y usuarios; bloqueo de filas y ciclo de reservas; CHECK en BD; auth endurecida (refresh tokens con hash y detección de reutilización, `/auth/me`, rate limiting, health 503); ESLint, Vitest y CI.
+- **Siguiente tarea:** 0.1 (DTOs de warehouses) y 0.5 (paginación de productos y reportes en SQL). Después 0.7 (web) y 0.8 (móvil).
+- **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
