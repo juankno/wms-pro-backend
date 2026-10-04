@@ -210,6 +210,10 @@ export class StockService {
     const [data, total] = await Promise.all([
       this.prisma.stockMovement.findMany({
         where,
+        include: {
+          product: { select: { id: true, code: true, name: true } },
+          warehouse: { select: { id: true, code: true, name: true } },
+        },
         orderBy: { createdAt: 'desc' },
         ...paginate(opts.page, opts.limit),
       }),

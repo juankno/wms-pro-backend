@@ -60,6 +60,16 @@ export class ProductsService {
     return status === 'out' ? { id: { notIn: ids } } : { id: { in: ids } };
   }
 
+  async findCategories(): Promise<string[]> {
+    const rows = await this.prisma.product.findMany({
+      where: { active: true, category: { not: '' } },
+      distinct: ['category'],
+      select: { category: true },
+      orderBy: { category: 'asc' },
+    });
+    return rows.map((r) => r.category);
+  }
+
   async findById(id: string, warehouseId: string | undefined) {
     const product = await this.prisma.product.findFirst({
       where: { id, active: true },
