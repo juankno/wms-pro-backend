@@ -76,35 +76,35 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 - [x] B15. `UpdateUserDto.active` no tiene `@IsBoolean`, y un admin puede desactivarse a sí mismo o dejar el sistema sin admin.
 - [x] B16. Swagger documenta `traslado_entrada/salida`, pero el enum real es `entrada_traslado/salida_traslado`.
 - [ ] B17. Uploads solo en disco local, sin procesar imágenes ni limpiar huérfanos.
-- [ ] B18. `NotificationsService` (Expo push) nunca se invoca.
+- [x] B18. `NotificationsService` (Expo push) nunca se invoca.
 - [x] B19. Falta un endpoint `/auth/me` (perfil y cambio de la contraseña propia).
-- [ ] B20. Docker: corre como root, sin HEALTHCHECK, sin `prisma migrate deploy`, con secretos hardcodeados en `docker-compose.yml`.
+- [x] B20. Docker: corre como root, sin HEALTHCHECK, sin `prisma migrate deploy`, con secretos hardcodeados en `docker-compose.yml`.
 - [x] B21. Cero tests (no existe `test/jest-e2e.json`) y sin CI.
 
 **Frontend web**
 
-- [ ] F1. Llama a `/stock/products/:id/movements`, pero la ruta real es `/products/:id/movements` (404): están rotos el ajuste manual y el historial del producto.
-- [ ] F2. Envía `limit` de 200, 500 y 10000, pero el backend permite como máximo 100 (400). Fallan los selectores de producto y la exportación CSV.
-- [ ] F3. El dashboard llama a `reports/*` (solo supervisor), así que el operario recibe 403. `/perfil` usa `PATCH /users/:id` (solo admin).
-- [ ] F4. No hay guard de rol por ruta: un operario puede entrar a `/usuarios`, `/bodegas` y `/reportes`.
-- [ ] F5. Los tokens se duplican en localStorage (claves sueltas y blob de Zustand) y se desincronizan al hacer refresh.
-- [ ] F6. Ninguna query maneja `isError`: un fallo se ve como una tabla vacía.
-- [ ] F7. Sin tests, sin Dockerfile, sin CI, sin `.env.example`.
+- [x] F1. Llama a `/stock/products/:id/movements`, pero la ruta real es `/products/:id/movements` (404): están rotos el ajuste manual y el historial del producto.
+- [x] F2. Envía `limit` de 200, 500 y 10000, pero el backend permite como máximo 100 (400). Fallan los selectores de producto y la exportación CSV.
+- [x] F3. El dashboard llama a `reports/*` (solo supervisor), así que el operario recibe 403. `/perfil` usa `PATCH /users/:id` (solo admin).
+- [x] F4. No hay guard de rol por ruta: un operario puede entrar a `/usuarios`, `/bodegas` y `/reportes`.
+- [x] F5. Los tokens se duplican en localStorage (claves sueltas y blob de Zustand) y se desincronizan al hacer refresh.
+- [x] F6. Ninguna query maneja `isError`: un fallo se ve como una tabla vacía.
+- [x] F7. Sin tests, sin Dockerfile, sin CI, sin `.env.example`.
 
 **App móvil**
 
-- [ ] M1. No restaura la sesión al abrir: `AppNavigator.tsx:79` siempre empieza en Login.
-- [ ] M2. Si el refresh falla, las peticiones en cola (`refreshSubscribers`) quedan colgadas para siempre.
-- [ ] M3. `uploads.service.ts` no maneja 401/refresh.
-- [ ] M4. `AppContext` sigue cargando `mockData`, y las notificaciones locales salen de esos datos simulados.
-- [ ] M5. Aparece "¿Descartar cambios?" después de guardar con éxito (Create/Edit Picking, CreatePacking, ProductForm).
-- [ ] M6. ProductForm no envía `location`.
-- [ ] M7. Scanner: un escaneo hecho antes de que carguen los ítems se marca como "no pertenece", y las pantallas de detalle no se refrescan al volver.
-- [ ] M8. Los toggles de sonido y vibración no hacen nada.
-- [ ] M9. Las listas se truncan en 100 sin paginación.
-- [ ] M10. La referencia de la orden se genera en el cliente y puede repetirse.
-- [ ] M11. El push token nunca se registra. Se piden permisos innecesarios (RECORD_AUDIO, WRITE_EXTERNAL_STORAGE).
-- [ ] M12. Sin tests ni lint. Todo por HTTP plano.
+- [x] M1. No restaura la sesión al abrir: `AppNavigator.tsx:79` siempre empieza en Login.
+- [x] M2. Si el refresh falla, las peticiones en cola (`refreshSubscribers`) quedan colgadas para siempre.
+- [x] M3. `uploads.service.ts` no maneja 401/refresh.
+- [x] M4. `AppContext` sigue cargando `mockData`, y las notificaciones locales salen de esos datos simulados.
+- [x] M5. Aparece "¿Descartar cambios?" después de guardar con éxito (Create/Edit Picking, CreatePacking, ProductForm).
+- [x] M6. ProductForm no envía `location`.
+- [x] M7. Scanner: un escaneo hecho antes de que carguen los ítems se marca como "no pertenece", y las pantallas de detalle no se refrescan al volver.
+- [x] M8. Los toggles de sonido y vibración no hacen nada.
+- [x] M9. Las listas se truncan en 100 sin paginación.
+- [x] M10. La referencia de la orden se genera en el cliente y puede repetirse.
+- [x] M11. El push token nunca se registra. Se piden permisos innecesarios (RECORD_AUDIO, WRITE_EXTERNAL_STORAGE).
+- [x] M12. Sin tests ni lint. Todo por HTTP plano.
 
 ## 5. Fases
 
@@ -117,9 +117,9 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [x] 0.4 Backend: seguridad y plataforma: secretos, throttler, health 503, refresh tokens hasheados con detección de reutilización, `/auth/me` (B9–B12, B19).
 - [x] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
 - [x] 0.6 Backend: suite de tests (unitarios + e2e del flujo reserva → picking → packing → descuento) y CI (B21).
-- [ ] 0.7 Frontend: F1–F6.
-- [ ] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
-- [ ] 0.9 Docker y CI en los tres repos (B20, F7, M12).
+- [x] 0.7 Frontend: F1–F6.
+- [x] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
+- [x] 0.9 Docker y CI en los tres repos (B20, F7, M12).
 
 ### Fase 1 — Base SaaS (3–4 semanas)
 - [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1. `MovementType` ya se renombró en la Fase 0 (backend #6, web #1).
@@ -184,8 +184,11 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ## 6. Estado actual
 
-- **Fase en curso:** Fase 0. Backend completo salvo 0.9 (Docker).
+- **Fase 0 completa** en los tres repos (pendiente de merge). Queda abierto B17 (uploads en disco local, se resuelve con S3 en la tarea 1.7).
 - **Mergeados:** backend #1–#6.
-- **Pendiente de merge:** web #1 (tipos de movimiento en inglés y rutas de movimientos). Debe acompañar al backend #6, que ya está en main.
-- **Siguiente tarea:** 0.7 (web: F2–F7) y 0.8 (móvil: M1–M12). Después 0.9 (Docker y CI de web y móvil).
+- **PRs abiertos, con CI en verde (mergear en este orden):**
+  - Backend: #7 (estado del plan y CI), #9 (categorías y nombres en movimientos), #10 (Docker).
+  - Web: #1 (tipos de movimiento en inglés, CI y Next 16.3.8) → #2 (fallos F2–F6, requiere backend #9) → #3 (Docker).
+  - Móvil: #1 (fallos M1–M12, requiere backend #9) → #2 (EAS).
+- **Siguiente tarea:** Fase 1 (base SaaS): 1.0 y 1.1, renombrado a inglés y modelo `Tenant`.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
