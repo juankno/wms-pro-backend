@@ -185,7 +185,7 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 ## 6. Estado actual
 
 - **Fase en curso:** Fase 0. Backend completo salvo 0.9 (Docker).
-- **Mergeados:** backend #1–#5.
-- **Pendientes de merge (desplegar juntos):** backend #6 (MovementType en inglés, reportes en SQL, contratos de listados) y web #1 (tipos en inglés, rutas de movimientos).
+- **Mergeados:** backend #1–#6.
+- **Pendiente de merge:** web #1 (tipos de movimiento en inglés y rutas de movimientos). Debe acompañar al backend #6, que ya está en main.
 - **Siguiente tarea:** 0.7 (web: F2–F7) y 0.8 (móvil: M1–M12). Después 0.9 (Docker y CI de web y móvil).
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
