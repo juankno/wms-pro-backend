@@ -7,22 +7,7 @@ import helmet from 'helmet';
 import * as path from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-
-function validateEnv() {
-  const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
-  const missing = required.filter((k) => !process.env[k]);
-  if (missing.length) {
-    throw new Error(`Variables de entorno requeridas no definidas: ${missing.join(', ')}`);
-  }
-  const insecure = ['JWT_SECRET', 'JWT_REFRESH_SECRET'].filter(
-    (k) =>
-      process.env[k]?.includes('change-in-production') ||
-      process.env[k]?.includes('your-super-secret'),
-  );
-  if (insecure.length && process.env.NODE_ENV === 'production') {
-    throw new Error(`Secretos inseguros detectados en producción: ${insecure.join(', ')}`);
-  }
-}
+import { validateEnv } from './config/env';
 
 async function bootstrap() {
   validateEnv();

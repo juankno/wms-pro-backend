@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -9,9 +10,12 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdatePushTokenDto } from './dto/update-push-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
+
+const AUTH_RATE_LIMIT = { limit: 10, ttl: 60_000 };
 
 @ApiTags('auth')
 @Controller('auth')
@@ -19,6 +23,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: AUTH_RATE_LIMIT })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Iniciar sesión',
@@ -52,6 +57,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ default: AUTH_RATE_LIMIT })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Renovar access token',
@@ -102,5 +108,29 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Token inválido', schema: { example: { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado' } } })
   updatePushToken(@CurrentUser() user: AuthUser, @Body() dto: UpdatePushTokenDto) {
     return this.authService.updatePushToken(user.id, dto.pushToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Perfil del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Perfil del usuario' })
+  me(@CurrentUser() user: AuthUser) {
+    return this.authService.me(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: AUTH_RATE_LIMIT })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Cambiar la contraseña propia',
+    description: 'Requiere la contraseña actual. Cierra todas las sesiones abiertas (revoca los refresh tokens).',
+  })
+  @ApiResponse({ status: 204, description: 'Contraseña actualizada' })
+  @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta', schema: { example: { error: 'AUTH_INVALID_PASSWORD', message: 'La contraseña actual no es correcta' } } })
+  changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 }

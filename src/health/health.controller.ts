@@ -1,8 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('health')
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(private prisma: PrismaService) {}
@@ -27,21 +29,24 @@ export class HealthController {
   @ApiResponse({
     status: 503,
     description: 'Servicio degradado',
-    schema: { example: { status: 'error', database: 'unreachable' } },
+    schema: { example: { error: 'SERVICE_UNAVAILABLE', message: 'Base de datos no disponible', details: { database: 'unreachable' } } },
   })
   async check() {
-    let dbStatus = 'ok';
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      dbStatus = 'unreachable';
+      throw new ServiceUnavailableException({
+        error: 'SERVICE_UNAVAILABLE',
+        message: 'Base de datos no disponible',
+        details: { database: 'unreachable' },
+      });
     }
 
     return {
-      status: dbStatus === 'ok' ? 'ok' : 'error',
+      status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      database: dbStatus,
+      database: 'ok',
     };
   }
 }
