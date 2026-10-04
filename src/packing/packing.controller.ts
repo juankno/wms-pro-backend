@@ -112,8 +112,8 @@ Authorization: Bearer eyJ...
   @ApiQuery({ name: 'status', required: false, enum: OrderStatus, description: 'Filtrar por estado' })
   @ApiQuery({ name: 'assignedTo', required: false, description: 'ID del operario asignado' })
   @ApiQuery({ name: 'search', required: false, description: 'Busca en referencia, cliente, picking' })
-  @ApiQuery({ name: 'from', required: false, description: 'Fecha inicio ISO 8601', example: '2025-06-01' })
-  @ApiQuery({ name: 'to', required: false, description: 'Fecha fin ISO 8601', example: '2025-06-30' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Fecha inicio ISO 8601', example: '2025-06-01' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Fecha fin ISO 8601', example: '2025-06-30' })
   @ApiQuery({ name: 'warehouseId', required: false, description: 'Almacén (solo admin)' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
@@ -132,8 +132,8 @@ Authorization: Bearer eyJ...
       status: q.status,
       assignedTo: q.assignedTo,
       search: q.search,
-      from: q.from,
-      to: q.to,
+      dateFrom: q.dateFrom,
+      dateTo: q.dateTo,
       page: q.page,
       limit: q.limit,
     });
@@ -232,7 +232,7 @@ Content-Type: application/json
 
 **Transiciones válidas:**
 - \`pending\` → \`in_progress\`
-- \`in_progress\` → \`completed\` — **descuenta el stock físico de forma atómica** y genera movimientos \`salida_picking\`
+- \`in_progress\` → \`completed\` — **descuenta el stock físico de forma atómica** y genera movimientos \`order_shipment\`
 - \`pending\` / \`in_progress\` → \`cancelled\`
 
 **Ejemplo de llamada:**
@@ -298,7 +298,7 @@ Content-Type: application/json
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Orden no encontrada', schema: { example: ERR_404 } })
   addBox(@Param('id') id: string, @Body() body: AddBoxDto, @CurrentUser() user: AuthUser) {
-    return this.packingService.addBox(id, body.label, user);
+    return this.packingService.addBox(id, body, user);
   }
 
   @Post(':id/photos')

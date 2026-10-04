@@ -13,6 +13,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { scopeWarehouseFilter } from '../common/utils/warehouse-scope';
+import { ReportQueryDto } from './dto/report-query.dto';
 
 const ERR_401 = { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado', requestId: 'req_abc123' };
 const ERR_403 = { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado', requestId: 'req_abc123' };
@@ -71,8 +73,8 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere supervisor o admin)', schema: { example: ERR_403 } })
-  getDashboard(@Query('warehouseId') wId: string | undefined, @CurrentUser() user: AuthUser) {
-    return this.reportsService.getDashboard(wId ?? user.warehouseId!);
+  getDashboard(@Query() q: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getDashboard(scopeWarehouseFilter(user, q.warehouseId));
   }
 
   @Get('stock')
@@ -101,8 +103,8 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
-  getStock(@Query('warehouseId') wId: string | undefined, @CurrentUser() user: AuthUser) {
-    return this.reportsService.getStockStatus(wId ?? user.warehouseId!);
+  getStock(@Query() q: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getStockStatus(scopeWarehouseFilter(user, q.warehouseId));
   }
 
   @Get('picking')
@@ -111,8 +113,8 @@ Authorization: Bearer eyJ...
     description: 'Totales y desglose por estado de las órdenes de picking. Acepta filtros de fecha. **Requiere rol supervisor o admin.**',
   })
   @ApiQuery({ name: 'warehouseId', required: false })
-  @ApiQuery({ name: 'from', required: false, description: 'Fecha inicio ISO 8601', example: '2025-09-01' })
-  @ApiQuery({ name: 'to', required: false, description: 'Fecha fin ISO 8601', example: '2025-09-30' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Fecha inicio ISO 8601', example: '2025-09-01' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Fecha fin ISO 8601', example: '2025-09-30' })
   @ApiResponse({
     status: 200,
     schema: { example: { warehouseId: 'wh_001', total: 42, byStatus: { pending: 5, in_progress: 3, completed: 30, cancelled: 4 }, avgItemsPerOrder: 3.2 } },
@@ -120,12 +122,10 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   getPickingStats(
-    @Query('warehouseId') wId: string | undefined,
-    @Query('from') from: string | undefined,
-    @Query('to') to: string | undefined,
+    @Query() q: ReportQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getPickingStats(wId ?? user.warehouseId!, from, to);
+    return this.reportsService.getPickingStats(scopeWarehouseFilter(user, q.warehouseId), q.dateFrom, q.dateTo);
   }
 
   @Get('packing')
@@ -134,8 +134,8 @@ Authorization: Bearer eyJ...
     description: 'Totales y desglose por estado de las órdenes de packing. **Requiere rol supervisor o admin.**',
   })
   @ApiQuery({ name: 'warehouseId', required: false })
-  @ApiQuery({ name: 'from', required: false })
-  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
   @ApiResponse({
     status: 200,
     schema: { example: { warehouseId: 'wh_001', total: 38, byStatus: { pending: 2, in_progress: 1, completed: 33, cancelled: 2 } } },
@@ -143,12 +143,10 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   getPackingStats(
-    @Query('warehouseId') wId: string | undefined,
-    @Query('from') from: string | undefined,
-    @Query('to') to: string | undefined,
+    @Query() q: ReportQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getPackingStats(wId ?? user.warehouseId!, from, to);
+    return this.reportsService.getPackingStats(scopeWarehouseFilter(user, q.warehouseId), q.dateFrom, q.dateTo);
   }
 
   @Get('stock/movements')
@@ -157,8 +155,8 @@ Authorization: Bearer eyJ...
     description: 'Totales de unidades entrantes y salientes en un período, agrupados por tipo. **Requiere rol supervisor o admin.**',
   })
   @ApiQuery({ name: 'warehouseId', required: false })
-  @ApiQuery({ name: 'from', required: false })
-  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
   @ApiResponse({
     status: 200,
     schema: {
@@ -167,18 +165,16 @@ Authorization: Bearer eyJ...
         period: { from: '2025-09-01', to: null },
         entradas: { count: 5, totalUnits: 200 },
         salidas: { count: 12, totalUnits: 310 },
-        byType: { entrada_compra: { count: 3, totalUnits: 150 } },
+        byType: { purchase_receipt: { count: 3, totalUnits: 150 } },
       },
     },
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   getStockMovements(
-    @Query('warehouseId') wId: string | undefined,
-    @Query('from') from: string | undefined,
-    @Query('to') to: string | undefined,
+    @Query() q: ReportQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.reportsService.getStockMovementsSummary(wId ?? user.warehouseId!, from, to);
+    return this.reportsService.getStockMovementsSummary(scopeWarehouseFilter(user, q.warehouseId), q.dateFrom, q.dateTo);
   }
 }

@@ -28,6 +28,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { stockWarehouseFor } from '../common/utils/warehouse-scope';
 
 const PRODUCT_EXAMPLE = {
   id: 'p001',
@@ -97,7 +98,7 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(@Query() q: ProductQueryDto, @CurrentUser() user: AuthUser) {
-    return this.productsService.findAll(q, user.warehouseId!);
+    return this.productsService.findAll(q, stockWarehouseFor(user, q.warehouseId));
   }
 
   @Get('barcode/:barcode')
@@ -116,7 +117,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   findByBarcode(@Param('barcode') barcode: string, @CurrentUser() user: AuthUser) {
-    return this.productsService.findByBarcode(barcode, user.warehouseId!);
+    return this.productsService.findByBarcode(barcode, stockWarehouseFor(user));
   }
 
   @Get(':id/stock')
@@ -153,7 +154,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   async getStock(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const product = await this.productsService.findById(id, user.warehouseId!);
+    const product = await this.productsService.findById(id, stockWarehouseFor(user));
     return product.allWarehousesStock;
   }
 
@@ -179,7 +180,7 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.productsService.findById(id, user.warehouseId!);
+    return this.productsService.findById(id, stockWarehouseFor(user));
   }
 
   @Post()

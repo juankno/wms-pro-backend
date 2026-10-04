@@ -8,14 +8,14 @@ const errorsFor = async <T extends object>(cls: new () => T, payload: object) =>
 
 describe('stock DTOs', () => {
   it('accepts a valid manual movement', async () => {
-    expect(await errorsFor(CreateMovementDto, { type: 'ajuste_positivo', quantity: 3 })).toEqual([]);
+    expect(await errorsFor(CreateMovementDto, { type: 'adjustment_increase', quantity: 3 })).toEqual([]);
   });
 
   it.each([0, -5, 1.5])('rejects quantity %p', async (quantity) => {
-    expect(await errorsFor(CreateMovementDto, { type: 'ajuste_positivo', quantity })).toContain('quantity');
+    expect(await errorsFor(CreateMovementDto, { type: 'adjustment_increase', quantity })).toContain('quantity');
   });
 
-  it.each(['salida_picking', 'entrada_devolucion', 'salida_traslado'])('rejects system-only type %s', async (type) => {
+  it.each(['order_shipment', 'customer_return', 'transfer_out'])('rejects system-only type %s', async (type) => {
     expect(await errorsFor(CreateMovementDto, { type, quantity: 1 })).toContain('type');
   });
 

@@ -1,173 +1,211 @@
 import { Injectable } from '@nestjs/common';
+import { MovementType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import {
+  INBOUND_MOVEMENT_TYPES,
+  OUTBOUND_MOVEMENT_TYPES,
+  STOCK_STATUS_CONDITION,
+  warehouseCondition,
+} from '../stock/stock-status';
+
+type DateRange = { gte?: Date; lte?: Date };
+type MovementTotals = { count: number; totalUnits: number };
+type StockRow = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  warehouseId: string;
+  stockFisico: number;
+  stockReservado: number;
+  minStock: number;
+  location: string;
+};
+
+const ORDER_STATUSES = Object.values(OrderStatus);
+
+function toStockItem(row: StockRow) {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    category: row.category,
+    warehouseId: row.warehouseId,
+    stockFisico: row.stockFisico,
+    stockReservado: row.stockReservado,
+    stockDisponible: Math.max(0, row.stockFisico - row.stockReservado),
+    minStock: row.minStock,
+    location: row.location,
+  };
+}
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async getDashboard(warehouseId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  async getDashboard(warehouseId?: string) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
 
-    const [
-      ordersCompletedToday,
-      ordersPendingNow,
-      ordersInProgressNow,
-      stockAlerts,
-      movementsToday,
-    ] = await Promise.all([
-      this.prisma.pickingOrder.count({ where: { warehouseId, status: 'completed', completedAt: { gte: today } } }),
-      this.prisma.pickingOrder.count({ where: { warehouseId, status: 'pending' } }),
-      this.prisma.pickingOrder.count({ where: { warehouseId, status: 'in_progress' } }),
-      this.prisma.warehouseStock.findMany({ where: { warehouseId } }),
-      this.prisma.stockMovement.findMany({ where: { warehouseId, createdAt: { gte: today } } }),
+    const [completedToday, pendingNow, inProgressNow, stockSummary, movementsToday] = await Promise.all([
+      this.prisma.pickingOrder.count({
+        where: { warehouseId, status: OrderStatus.completed, completedAt: { gte: startOfToday } },
+      }),
+      this.prisma.pickingOrder.count({ where: { warehouseId, status: OrderStatus.pending } }),
+      this.prisma.pickingOrder.count({ where: { warehouseId, status: OrderStatus.in_progress } }),
+      this.stockSummary(warehouseId),
+      this.movementTotals({ warehouseId, createdAt: { gte: startOfToday } }),
     ]);
 
-    const outOfStock = stockAlerts.filter((s) => s.stockFisico - s.stockReservado === 0).length;
-    const lowStock = stockAlerts.filter((s) => {
-      const avail = s.stockFisico - s.stockReservado;
-      return avail > 0 && avail <= s.minStock;
-    }).length;
-    const totalReserved = stockAlerts.reduce((acc, s) => acc + s.stockReservado, 0);
-
-    const entradas = movementsToday.filter((m) => m.type.startsWith('entrada_'));
-    const salidas = movementsToday.filter((m) => m.type.startsWith('salida_'));
-
-    const total = ordersCompletedToday + ordersPendingNow + ordersInProgressNow;
-    const efficiencyPercent = total > 0 ? Math.round((ordersCompletedToday / total) * 100) : 0;
-
+    const total = completedToday + pendingNow + inProgressNow;
     return {
-      warehouseId,
-      ordersCompletedToday,
-      ordersPendingNow,
-      ordersInProgressNow,
-      efficiencyPercent,
-      stockAlerts: { outOfStock, lowStock, totalReserved },
+      warehouseId: warehouseId ?? null,
+      ordersCompletedToday: completedToday,
+      ordersPendingNow: pendingNow,
+      ordersInProgressNow: inProgressNow,
+      efficiencyPercent: total > 0 ? Math.round((completedToday / total) * 100) : 0,
+      stockAlerts: {
+        outOfStock: stockSummary.outOfStock,
+        lowStock: stockSummary.lowStock,
+        totalReserved: stockSummary.totalReserved,
+      },
       movements: {
-        entradasHoy: entradas.length,
-        salidasHoy: salidas.length,
-        unidadesEntradasHoy: entradas.reduce((a, m) => a + m.quantity, 0),
-        unidadesSalidasHoy: salidas.reduce((a, m) => a + m.quantity, 0),
+        entradasHoy: movementsToday.inbound.count,
+        salidasHoy: movementsToday.outbound.count,
+        unidadesEntradasHoy: movementsToday.inbound.totalUnits,
+        unidadesSalidasHoy: movementsToday.outbound.totalUnits,
       },
     };
   }
 
-  async getStock(warehouseId: string) {
-    return this.prisma.warehouseStock.findMany({
-      where: { warehouseId },
-      include: { product: { select: { id: true, code: true, name: true, category: true, unit: true } } },
-    });
-  }
+  async getPickingStats(warehouseId?: string, from?: string, to?: string) {
+    const createdAt = this.dateRange(from, to);
+    const where: Prisma.PickingOrderWhereInput = { warehouseId, createdAt };
 
-  async getPickingStats(warehouseId: string, from?: string, to?: string) {
-    const dateFilter = this.buildDateFilter(from, to);
-    const where: Prisma.PickingOrderWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
-
-    const [total, byStatus, avgItemsRaw] = await Promise.all([
-      this.prisma.pickingOrder.count({ where }),
-      this.prisma.pickingOrder.groupBy({ by: ['status'], where, _count: { id: true } }),
-      this.prisma.pickingItem.aggregate({ where: { pickingOrder: { warehouseId } }, _avg: { quantity: true } }),
+    const [byStatus, itemCount] = await Promise.all([
+      this.prisma.pickingOrder.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      this.prisma.pickingItem.count({ where: { pickingOrder: where } }),
     ]);
 
-    const statusMap = Object.fromEntries(byStatus.map((s) => [s.status, s._count.id]));
+    const counts = this.countByStatus(byStatus);
+    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
     return {
-      warehouseId,
+      warehouseId: warehouseId ?? null,
       total,
-      byStatus: {
-        pending: statusMap['pending'] ?? 0,
-        in_progress: statusMap['in_progress'] ?? 0,
-        completed: statusMap['completed'] ?? 0,
-        cancelled: statusMap['cancelled'] ?? 0,
-      },
-      avgItemsPerOrder: Math.round((avgItemsRaw._avg.quantity ?? 0) * 10) / 10,
+      byStatus: counts,
+      avgItemsPerOrder: total > 0 ? Math.round((itemCount / total) * 10) / 10 : 0,
     };
   }
 
-  async getPackingStats(warehouseId: string, from?: string, to?: string) {
-    const dateFilter = this.buildDateFilter(from, to);
-    const where: Prisma.PackingOrderWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
+  async getPackingStats(warehouseId?: string, from?: string, to?: string) {
+    const byStatus = await this.prisma.packingOrder.groupBy({
+      by: ['status'],
+      where: { warehouseId, createdAt: this.dateRange(from, to) },
+      _count: { _all: true },
+    });
 
-    const [total, byStatus] = await Promise.all([
-      this.prisma.packingOrder.count({ where }),
-      this.prisma.packingOrder.groupBy({ by: ['status'], where, _count: { id: true } }),
+    const counts = this.countByStatus(byStatus);
+    return {
+      warehouseId: warehouseId ?? null,
+      total: Object.values(counts).reduce((sum, n) => sum + n, 0),
+      byStatus: counts,
+    };
+  }
+
+  async getStockStatus(warehouseId?: string) {
+    const [summary, outOfStock, lowStock] = await Promise.all([
+      this.stockSummary(warehouseId),
+      this.stockRows(warehouseId, STOCK_STATUS_CONDITION.out),
+      this.stockRows(warehouseId, STOCK_STATUS_CONDITION.low),
     ]);
 
-    const statusMap = Object.fromEntries(byStatus.map((s) => [s.status, s._count.id]));
     return {
-      warehouseId,
-      total,
-      byStatus: {
-        pending: statusMap['pending'] ?? 0,
-        in_progress: statusMap['in_progress'] ?? 0,
-        completed: statusMap['completed'] ?? 0,
-        cancelled: statusMap['cancelled'] ?? 0,
+      warehouseId: warehouseId ?? null,
+      summary: {
+        total: summary.total,
+        outOfStock: summary.outOfStock,
+        lowStock: summary.lowStock,
+        ok: summary.ok,
       },
+      outOfStock: outOfStock.map(toStockItem),
+      lowStock: lowStock.map(toStockItem),
     };
   }
 
-  async getStockStatus(warehouseId: string) {
-    const stocks = await this.prisma.warehouseStock.findMany({
-      where: { warehouseId },
-      include: { product: { select: { id: true, code: true, name: true, category: true, active: true } } },
-      orderBy: { stockFisico: 'asc' },
-    });
-
-    const active = stocks.filter((s) => s.product.active);
-    const outOfStock = active.filter((s) => s.stockFisico === 0);
-    const lowStock = active.filter((s) => s.stockFisico > 0 && s.stockFisico - s.stockReservado <= s.minStock);
-    const ok = active.filter((s) => s.stockFisico - s.stockReservado > s.minStock);
-
-    const mapItem = (s: typeof active[number]) => ({
-      ...s.product,
-      stockFisico: s.stockFisico,
-      stockReservado: s.stockReservado,
-      stockDisponible: Math.max(0, s.stockFisico - s.stockReservado),
-      minStock: s.minStock,
-      location: s.location,
-    });
-
+  async getStockMovementsSummary(warehouseId?: string, from?: string, to?: string) {
+    const totals = await this.movementTotals({ warehouseId, createdAt: this.dateRange(from, to) });
     return {
-      warehouseId,
-      summary: { total: active.length, outOfStock: outOfStock.length, lowStock: lowStock.length, ok: ok.length },
-      outOfStock: outOfStock.map(mapItem),
-      lowStock: lowStock.map(mapItem),
-    };
-  }
-
-  async getStockMovementsSummary(warehouseId: string, from?: string, to?: string) {
-    const dateFilter = this.buildDateFilter(from, to);
-    const where: Prisma.StockMovementWhereInput = { warehouseId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
-
-    const movements = await this.prisma.stockMovement.findMany({ where });
-
-    const entradaTypes = ['entrada_compra', 'entrada_devolucion', 'entrada_traslado', 'inventario_inicial', 'ajuste_positivo'];
-    const salidaTypes = ['salida_picking', 'salida_traslado', 'ajuste_negativo'];
-
-    const entradas = movements.filter((m) => entradaTypes.includes(m.type));
-    const salidas = movements.filter((m) => salidaTypes.includes(m.type));
-
-    const byType = movements.reduce<Record<string, { count: number; totalUnits: number }>>((acc, m) => {
-      if (!acc[m.type]) acc[m.type] = { count: 0, totalUnits: 0 };
-      acc[m.type].count++;
-      acc[m.type].totalUnits += m.quantity;
-      return acc;
-    }, {});
-
-    return {
-      warehouseId,
+      warehouseId: warehouseId ?? null,
       period: { from: from ?? null, to: to ?? null },
-      entradas: { count: entradas.length, totalUnits: entradas.reduce((s, m) => s + m.quantity, 0) },
-      salidas: { count: salidas.length, totalUnits: salidas.reduce((s, m) => s + m.quantity, 0) },
-      byType,
+      entradas: totals.inbound,
+      salidas: totals.outbound,
+      byType: totals.byType,
     };
   }
 
-  private buildDateFilter(from?: string, to?: string) {
-    if (!from && !to) return null;
-    const filter: { gte?: Date; lte?: Date } = {};
-    if (from) filter.gte = new Date(from);
-    if (to) filter.lte = new Date(to);
-    return filter;
+  private async stockSummary(warehouseId?: string) {
+    const [row] = await this.prisma.$queryRaw<
+      { total: number; outOfStock: number; lowStock: number; ok: number; totalReserved: number }[]
+    >`
+      SELECT
+        count(*)::int AS "total",
+        count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.out})::int AS "outOfStock",
+        count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.low})::int AS "lowStock",
+        count(*) FILTER (WHERE ${STOCK_STATUS_CONDITION.ok})::int AS "ok",
+        coalesce(sum(ws."stockReservado"), 0)::int AS "totalReserved"
+      FROM warehouse_stock ws
+      JOIN products p ON p.id = ws."productId" AND p.active
+      WHERE ${warehouseCondition(warehouseId)}`;
+    return row;
+  }
+
+  private stockRows(warehouseId: string | undefined, condition: Prisma.Sql) {
+    return this.prisma.$queryRaw<StockRow[]>`
+      SELECT p.id, p.code, p.name, p.category, ws."warehouseId",
+             ws."stockFisico", ws."stockReservado", ws."minStock", ws.location
+      FROM warehouse_stock ws
+      JOIN products p ON p.id = ws."productId" AND p.active
+      WHERE ${warehouseCondition(warehouseId)} AND ${condition}
+      ORDER BY (ws."stockFisico" - ws."stockReservado"), p.name`;
+  }
+
+  private async movementTotals(where: Prisma.StockMovementWhereInput) {
+    const groups = await this.prisma.stockMovement.groupBy({
+      by: ['type'],
+      where,
+      _count: { _all: true },
+      _sum: { quantity: true },
+    });
+
+    const byType: Partial<Record<MovementType, MovementTotals>> = {};
+    const inbound: MovementTotals = { count: 0, totalUnits: 0 };
+    const outbound: MovementTotals = { count: 0, totalUnits: 0 };
+
+    for (const group of groups) {
+      const totals = { count: group._count._all, totalUnits: group._sum.quantity ?? 0 };
+      byType[group.type] = totals;
+      const bucket = INBOUND_MOVEMENT_TYPES.includes(group.type)
+        ? inbound
+        : OUTBOUND_MOVEMENT_TYPES.includes(group.type)
+          ? outbound
+          : null;
+      if (bucket) {
+        bucket.count += totals.count;
+        bucket.totalUnits += totals.totalUnits;
+      }
+    }
+
+    return { inbound, outbound, byType };
+  }
+
+  private countByStatus(groups: { status: OrderStatus; _count: { _all: number } }[]) {
+    const counts = Object.fromEntries(ORDER_STATUSES.map((s) => [s, 0])) as Record<OrderStatus, number>;
+    for (const group of groups) counts[group.status] = group._count._all;
+    return counts;
+  }
+
+  private dateRange(from?: string, to?: string): DateRange | undefined {
+    if (!from && !to) return undefined;
+    return { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
   }
 }

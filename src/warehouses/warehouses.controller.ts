@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
+import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/warehouse.dto';
 import { WarehousesService } from './warehouses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -45,7 +46,7 @@ export class WarehousesController {
   @ApiResponse({ status: 201, description: 'Almacén creado', schema: { example: WAREHOUSE_EXAMPLE } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado' } } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos', details: [{ field: 'code', message: 'El código es requerido' }] } } })
-  create(@Body() body: { name: string; code: string; address?: string }) {
+  create(@Body() body: CreateWarehouseDto) {
     return this.warehousesService.create(body);
   }
 
@@ -55,7 +56,7 @@ export class WarehousesController {
   @ApiParam({ name: 'id', example: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec' })
   @ApiResponse({ status: 200, description: 'Almacén actualizado', schema: { example: WAREHOUSE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'No encontrado', schema: { example: { error: 'WAREHOUSE_NOT_FOUND', message: 'Almacén no encontrado' } } })
-  update(@Param('id') id: string, @Body() body: { name?: string; address?: string; active?: boolean }) {
+  update(@Param('id') id: string, @Body() body: UpdateWarehouseDto) {
     return this.warehousesService.update(id, body);
   }
 }

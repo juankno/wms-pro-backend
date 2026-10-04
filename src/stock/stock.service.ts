@@ -25,7 +25,7 @@ export class StockService {
       if (!stock) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en este almacén' });
 
       const { stockFisico, stockReservado } = stock;
-      const isDecrease = opts.type === 'ajuste_negativo';
+      const isDecrease = opts.type === 'adjustment_decrease';
 
       if (isDecrease) {
         const disponible = stockFisico - stockReservado;
@@ -131,7 +131,7 @@ export class StockService {
         data: {
           productId: opts.productId,
           warehouseId: opts.fromWarehouseId,
-          type: 'salida_traslado',
+          type: 'transfer_out',
           quantity: opts.quantity,
           stockFisicoAntes: fromStock.stockFisico,
           stockFisicoDespues: newFromFisico,
@@ -147,7 +147,7 @@ export class StockService {
         data: {
           productId: opts.productId,
           warehouseId: opts.toWarehouseId,
-          type: 'entrada_traslado',
+          type: 'transfer_in',
           quantity: opts.quantity,
           stockFisicoAntes: toStock.stockFisico,
           stockFisicoDespues: newToFisico,

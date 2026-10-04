@@ -27,4 +27,5 @@ export class UpdatePackingItemDto {
 
 export class AddBoxDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50) label!: string;
+  @ApiPropertyOptional({ minimum: 0 }) @IsOptional() @IsNumber() @Min(0) weight?: number;
 }

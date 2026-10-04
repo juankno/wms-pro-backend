@@ -20,14 +20,14 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OrderStatus, Role } from '@prisma/client';
+import { OrderStatus, Priority, Role } from '@prisma/client';
 import { PickingService } from './picking.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
-import { OrdersQueryDto } from '../common/dto/orders-query.dto';
+import { PickingQueryDto } from '../common/dto/orders-query.dto';
 import { resolveWarehouseId, scopeWarehouseFilter } from '../common/utils/warehouse-scope';
 import {
   AddPhotoDto,
@@ -103,8 +103,9 @@ Authorization: Bearer eyJ...
   @ApiQuery({ name: 'status', required: false, enum: OrderStatus, description: 'Filtrar por estado' })
   @ApiQuery({ name: 'assignedTo', required: false, description: 'ID del operario asignado', example: 'user_002' })
   @ApiQuery({ name: 'search', required: false, description: 'Busca en referencia y cliente', example: 'Constructora' })
-  @ApiQuery({ name: 'from', required: false, description: 'Fecha inicio ISO 8601', example: '2025-06-01' })
-  @ApiQuery({ name: 'to', required: false, description: 'Fecha fin ISO 8601', example: '2025-06-30' })
+  @ApiQuery({ name: 'priority', required: false, enum: Priority, description: 'Filtrar por prioridad' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Fecha inicio ISO 8601', example: '2025-06-01' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Fecha fin ISO 8601', example: '2025-06-30' })
   @ApiQuery({ name: 'warehouseId', required: false, description: 'Almacén (solo admin, default: almacén del usuario)' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
@@ -115,16 +116,17 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(
-    @Query() q: OrdersQueryDto,
+    @Query() q: PickingQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.pickingService.findAll({
       warehouseId: scopeWarehouseFilter(user, q.warehouseId),
       status: q.status,
+      priority: q.priority,
       assignedTo: q.assignedTo,
       search: q.search,
-      from: q.from,
-      to: q.to,
+      dateFrom: q.dateFrom,
+      dateTo: q.dateTo,
       page: q.page,
       limit: q.limit,
     });
