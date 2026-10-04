@@ -12,14 +12,14 @@ import {
 } from "class-validator";
 
 class PickingItemDto {
-  @ApiProperty() @IsString() productId: string;
-  @ApiProperty() @IsInt() @IsPositive() quantity: number;
+  @ApiProperty() @IsString() productId!: string;
+  @ApiProperty() @IsInt() @IsPositive() quantity!: number;
 }
 
 export class CreatePickingDto {
-  @ApiProperty() @IsString() reference: string;
-  @ApiProperty() @IsString() client: string;
-  @ApiProperty() @IsString() warehouseId: string;
+  @ApiProperty() @IsString() reference!: string;
+  @ApiProperty() @IsString() client!: string;
+  @ApiProperty() @IsString() warehouseId!: string;
   @ApiPropertyOptional({ enum: ["low", "medium", "high"] })
   @IsOptional()
   @IsEnum(["low", "medium", "high"])
@@ -31,15 +31,15 @@ export class CreatePickingDto {
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PickingItemDto)
-  items: PickingItemDto[];
+  items!: PickingItemDto[];
 }
 
 export class UpdatePickingStatusDto {
   @ApiProperty({ enum: ["in_progress", "completed", "cancelled"] })
   @IsEnum(["in_progress", "completed", "cancelled"])
-  status: "in_progress" | "completed" | "cancelled";
+  status!: "in_progress" | "completed" | "cancelled";
 }
 
 export class UpdatePickingItemDto {
-  @ApiProperty() @IsInt() @IsPositive() pickedQuantity: number;
+  @ApiProperty() @IsInt() @IsPositive() pickedQuantity!: number;
 }
