@@ -67,6 +67,7 @@ model Tenant {
   locations      Location[]
   locationStock  LocationStock[]
   partners       Partner[]
+  barcodes       ProductBarcode[]
 
   @@map("tenants")
 }
@@ -162,6 +163,7 @@ model Product {
   stockMovements StockMovement[]
   pickingItems   PickingItem[]
   packingItems   PackingItem[]
+  barcodes       ProductBarcode[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -545,4 +547,23 @@ model Partner {
   @@unique([tenantId, code])
   @@index([tenantId, name])
   @@map("partners")
+}
+
+// Extra barcodes of a product, e.g. the code printed on a box of 12 (quantity = 12 base units).
+// Codes are unique per tenant together with Product.barcode.
+model ProductBarcode {
+  id        String   @id @default(uuid())
+  tenantId  String
+  productId String
+  code      String
+  quantity  Int      @default(1)
+  label     String?
+  createdAt DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([productId])
+  @@map("product_barcodes")
 }

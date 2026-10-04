@@ -29,6 +29,7 @@ export class ProductsService {
         { code: { contains: search, mode: 'insensitive' } },
         { name: { contains: search, mode: 'insensitive' } },
         { barcode: { contains: search, mode: 'insensitive' } },
+        { barcodes: { some: { code: { contains: search, mode: 'insensitive' } } } },
         { brand: { contains: search, mode: 'insensitive' } },
         { category: { contains: search, mode: 'insensitive' } },
       ];
@@ -80,6 +81,7 @@ export class ProductsService {
           include: { warehouse: { select: { id: true, code: true, name: true, active: true } } },
           orderBy: { warehouse: { name: 'asc' } },
         },
+        barcodes: { orderBy: { quantity: 'asc' } },
       },
     });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
@@ -110,20 +112,51 @@ export class ProductsService {
     };
   }
 
+  // Resolves the main barcode or an extra one; scanQuantity is how many base units one scan counts.
   async findByBarcode(barcode: string, warehouseId: string | undefined) {
+    const extra = await this.prisma.productBarcode.findFirst({ where: { code: barcode } });
     const product = await this.prisma.product.findFirst({
-      where: { barcode, active: true },
+      where: { active: true, ...(extra ? { id: extra.productId } : { barcode }) },
       include: { warehouseStock: warehouseId ? { where: { warehouseId } } : false },
     });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
-    return this.attachStock(product, warehouseId);
+    return {
+      ...this.attachStock(product, warehouseId),
+      scanQuantity: extra?.quantity ?? 1,
+      packaging: extra?.label ?? null,
+    };
+  }
+
+  async addBarcode(productId: string, data: { code: string; quantity?: number; label?: string }) {
+    await this.findActive(productId);
+    await this.assertBarcodeFree(data.code);
+    return this.prisma.productBarcode.create({ data: { ...data, productId, tenantId: requireTenantId() } });
+  }
+
+  async removeBarcode(productId: string, barcodeId: string) {
+    const { count } = await this.prisma.productBarcode.deleteMany({ where: { id: barcodeId, productId } });
+    if (count === 0) throw new NotFoundException({ error: 'BARCODE_NOT_FOUND', message: 'Código de barras no encontrado' });
+  }
+
+  // Main and extra barcodes share one namespace so a scan always resolves to a single product.
+  private async assertBarcodeFree(code: string) {
+    const [product, extra] = await Promise.all([
+      this.prisma.product.findFirst({ where: { barcode: code } }),
+      this.prisma.productBarcode.findFirst({ where: { code } }),
+    ]);
+    if (product || extra) {
+      throw new ConflictException({ error: 'BARCODE_DUPLICATE', message: 'Ya existe un producto con ese código de barras' });
+    }
+  }
+
+  private async findActive(id: string) {
+    const product = await this.prisma.product.findFirst({ where: { id, active: true } });
+    if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
+    return product;
   }
 
   async create(dto: CreateProductDto) {
-    if (dto.barcode) {
-      const exists = await this.prisma.product.findFirst({ where: { barcode: dto.barcode } });
-      if (exists) throw new ConflictException({ error: 'BARCODE_DUPLICATE', message: 'Ya existe un producto con ese código de barras' });
-    }
+    if (dto.barcode) await this.assertBarcodeFree(dto.barcode);
     return this.prisma.product.create({ data: { ...dto, tenantId: requireTenantId() } });
   }
 
@@ -131,10 +164,7 @@ export class ProductsService {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
 
-    if (data.barcode && data.barcode !== product.barcode) {
-      const exists = await this.prisma.product.findFirst({ where: { barcode: data.barcode } });
-      if (exists) throw new ConflictException({ error: 'BARCODE_DUPLICATE', message: 'Ya existe un producto con ese código de barras' });
-    }
+    if (data.barcode && data.barcode !== product.barcode) await this.assertBarcodeFree(data.barcode);
 
     return this.prisma.product.update({ where: { id }, data });
   }

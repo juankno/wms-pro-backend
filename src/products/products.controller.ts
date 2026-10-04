@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -20,7 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
-import { CreateProductDto } from './dto/create-product.dto';
+import { AddBarcodeDto, CreateProductDto, UpdateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -234,7 +235,14 @@ Content-Type: application/json
   @ApiResponse({ status: 403, description: 'Rol insuficiente', schema: { example: ERR_403 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   @ApiResponse({ status: 409, description: 'Código de barras duplicado', schema: { example: ERR_409_BARCODE } })
-  update(@Param('id') id: string, @Body() dto: Partial<CreateProductDto>) {
+  update(@Param('id') id: string, @Body() dto: UpdateProductDto, @CurrentUser() user: AuthUser) {
+    if (dto.active === false && !user.permissions.includes('products.delete')) {
+      throw new ForbiddenException({
+        error: 'PERMISSION_DENIED',
+        message: 'No tienes permiso para desactivar productos',
+        details: { missing: ['products.delete'] },
+      });
+    }
     return this.productsService.update(id, dto);
   }
 
@@ -252,6 +260,24 @@ Content-Type: application/json
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   remove(@Param('id') id: string) {
     return this.productsService.softDelete(id);
+  }
+
+  @Post(':id/barcodes')
+  @RequirePermissions('products.write')
+  @ApiOperation({
+    summary: 'Agregar código de barras adicional',
+    description: 'Para empaques usa `quantity` (unidades base por lectura, p. ej. 12 para una caja). Únicos junto al código principal.',
+  })
+  addBarcode(@Param('id') id: string, @Body() dto: AddBarcodeDto) {
+    return this.productsService.addBarcode(id, dto);
+  }
+
+  @Delete(':id/barcodes/:barcodeId')
+  @RequirePermissions('products.write')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar código de barras adicional' })
+  async removeBarcode(@Param('id') id: string, @Param('barcodeId') barcodeId: string) {
+    await this.productsService.removeBarcode(id, barcodeId);
   }
 
   @Post(':id/photos')
