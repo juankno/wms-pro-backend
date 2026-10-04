@@ -1,0 +1,211 @@
+import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { PrismaClient, Role } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ActivityService } from '../src/activity/activity.service';
+import { AuthUser } from '../src/common/types/request-with-user.interface';
+import { PackingService } from '../src/packing/packing.service';
+import { PickingService } from '../src/picking/picking.service';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { UploadsService } from '../src/uploads/uploads.service';
+
+const databaseUrl = process.env.TEST_DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error('TEST_DATABASE_URL must point to a disposable database');
+}
+
+describe('Picking and packing reservations (integration)', () => {
+  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } }) as PrismaService;
+  const activity = new ActivityService(prisma);
+  const uploads = { deleteFile: () => undefined } as unknown as UploadsService;
+  const picking = new PickingService(prisma, activity, uploads);
+  const packing = new PackingService(prisma, activity, uploads);
+
+  let admin: AuthUser;
+  let outsider: AuthUser;
+  let warehouseId: string;
+  let otherWarehouseId: string;
+  let productA: string;
+  let productB: string;
+
+  const ref = () => `T-${randomUUID().slice(0, 8)}`;
+  const stockOf = (productId: string) =>
+    prisma.warehouseStock.findUniqueOrThrow({ where: { productId_warehouseId: { productId, warehouseId } } });
+  const newPicking = (items: { productId: string; quantity: number }[]) =>
+    picking.create({ reference: ref(), client: 'Client', warehouseId, items }, admin);
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const [w1, w2] = await Promise.all([
+      prisma.warehouse.create({ data: { code: `W1-${suffix}`, name: 'Main' } }),
+      prisma.warehouse.create({ data: { code: `W2-${suffix}`, name: 'Other' } }),
+    ]);
+    warehouseId = w1.id;
+    otherWarehouseId = w2.id;
+
+    const createUser = (name: string, role: Role, warehouse: string) =>
+      prisma.user.create({
+        data: { username: `${name}-${suffix}`, email: `${name}-${suffix}@example.com`, name, role, password: 'unused', warehouseId: warehouse },
+      });
+    const [adminRow, outsiderRow] = await Promise.all([
+      createUser('admin', Role.admin, warehouseId),
+      createUser('outsider', Role.operator, otherWarehouseId),
+    ]);
+    const toAuthUser = (u: typeof adminRow): AuthUser => ({
+      id: u.id, sub: u.id, name: u.name, username: u.username, role: u.role, warehouseId: u.warehouseId,
+    });
+    admin = toAuthUser(adminRow);
+    outsider = toAuthUser(outsiderRow);
+  });
+
+  beforeEach(async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const [a, b] = await Promise.all([
+      prisma.product.create({ data: { code: `PA-${suffix}`, name: 'Product A', category: 'test' } }),
+      prisma.product.create({ data: { code: `PB-${suffix}`, name: 'Product B', category: 'test' } }),
+    ]);
+    productA = a.id;
+    productB = b.id;
+    await prisma.warehouseStock.createMany({
+      data: [
+        { productId: productA, warehouseId, stockFisico: 10 },
+        { productId: productB, warehouseId, stockFisico: 5 },
+      ],
+    });
+  });
+
+  afterEach(async () => {
+    const productIds = [productA, productB];
+    const orders = await prisma.pickingOrder.findMany({
+      where: { items: { some: { productId: { in: productIds } } } },
+      select: { id: true, packingOrder: { select: { id: true } } },
+    });
+    const orderIds = orders.flatMap((o) => [o.id, ...(o.packingOrder ? [o.packingOrder.id] : [])]);
+    await prisma.activityLog.deleteMany({ where: { orderId: { in: orderIds } } });
+    await prisma.packingOrder.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.pickingOrder.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.stockMovement.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.warehouseStock.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+  });
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { userId: { in: [admin.id, outsider.id] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [admin.id, outsider.id] } } });
+    await prisma.warehouse.deleteMany({ where: { id: { in: [warehouseId, otherWarehouseId] } } });
+    await prisma.$disconnect();
+  });
+
+  describe('picking', () => {
+    it('reserves stock on creation and logs the activity in the same transaction', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 4 }]);
+
+      expect((await stockOf(productA)).stockReservado).toBe(4);
+      expect(order.items[0].reservedQuantity).toBe(4);
+      expect(await prisma.activityLog.count({ where: { orderId: order.id, action: 'created' } })).toBe(1);
+    });
+
+    it('rejects an order above available stock without reserving anything', async () => {
+      await expect(
+        newPicking([
+          { productId: productA, quantity: 2 },
+          { productId: productB, quantity: 6 },
+        ]),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect((await stockOf(productA)).stockReservado).toBe(0);
+    });
+
+    it('never oversells under concurrent order creation', async () => {
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () => newPicking([{ productId: productA, quantity: 3 }])),
+      );
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+      expect((await stockOf(productA)).stockReservado).toBe(9);
+    });
+
+    it('refuses to complete an order with nothing picked', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 2 }]);
+      await picking.updateStatus(order.id, 'in_progress', admin);
+
+      await expect(picking.updateStatus(order.id, 'completed', admin)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('rejects picking more than requested', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 2 }]);
+
+      await expect(picking.updateItem(order.id, order.items[0].id, 3, admin)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('releases the unpicked quantity on completion', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 4 }]);
+      await picking.updateStatus(order.id, 'in_progress', admin);
+      await picking.updateItem(order.id, order.items[0].id, 3, admin);
+      await picking.updateStatus(order.id, 'completed', admin);
+
+      expect((await stockOf(productA)).stockReservado).toBe(3);
+    });
+
+    it('releases every reservation on cancellation and on deletion', async () => {
+      const cancelled = await newPicking([{ productId: productA, quantity: 4 }]);
+      const deleted = await newPicking([{ productId: productB, quantity: 2 }]);
+
+      await picking.updateStatus(cancelled.id, 'cancelled', admin);
+      await picking.delete(deleted.id, admin);
+
+      expect((await stockOf(productA)).stockReservado).toBe(0);
+      expect((await stockOf(productB)).stockReservado).toBe(0);
+    });
+
+    it('hides orders from users of other warehouses', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 1 }]);
+
+      await expect(picking.findById(order.id, outsider)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('packing', () => {
+    const pickAndComplete = async (quantity: number, picked: number) => {
+      const order = await newPicking([{ productId: productA, quantity }]);
+      await picking.updateStatus(order.id, 'in_progress', admin);
+      await picking.updateItem(order.id, order.items[0].id, picked, admin);
+      await picking.updateStatus(order.id, 'completed', admin);
+      return packing.create({ pickingOrderId: order.id, reference: ref() }, admin);
+    };
+
+    it('ships packed units and releases the rest of the reservation', async () => {
+      const order = await pickAndComplete(4, 3);
+      await packing.updateStatus(order.id, 'in_progress', admin);
+      await packing.updateItem(order.id, order.items[0].id, 2, admin);
+      await packing.updateStatus(order.id, 'completed', admin);
+
+      const stock = await stockOf(productA);
+      expect(stock).toMatchObject({ stockFisico: 8, stockReservado: 0 });
+
+      const movements = await prisma.stockMovement.findMany({ where: { productId: productA } });
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({ type: 'salida_picking', quantity: 2, stockFisicoAntes: 10, stockFisicoDespues: 8 });
+    });
+
+    it('refuses to complete a packing with nothing packed', async () => {
+      const order = await pickAndComplete(2, 2);
+      await packing.updateStatus(order.id, 'in_progress', admin);
+
+      await expect(packing.updateStatus(order.id, 'completed', admin)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('releases the reservation when cancelled without touching physical stock', async () => {
+      const order = await pickAndComplete(4, 4);
+      await packing.updateStatus(order.id, 'cancelled', admin);
+
+      expect(await stockOf(productA)).toMatchObject({ stockFisico: 10, stockReservado: 0 });
+    });
+  });
+});

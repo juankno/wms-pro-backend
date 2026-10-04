@@ -1,16 +1,27 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
-  ConflictException,
   UnprocessableEntityException,
-  BadRequestException,
 } from '@nestjs/common';
+import { OrderStatus, PackingItem, PackingOrder, PickingItem, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../activity/activity.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { OrderStatus, Prisma, Role } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
+import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
+import { OrderTargetStatus } from '../picking/dto/create-picking.dto';
+
+type LockedPackingOrder = PackingOrder & { items: PackingItem[]; pickingItems: PickingItem[] };
+
+const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  pending: [OrderStatus.in_progress, OrderStatus.cancelled],
+  in_progress: [OrderStatus.completed, OrderStatus.cancelled],
+};
+
+const EDITABLE_STATUSES: OrderStatus[] = [OrderStatus.pending, OrderStatus.in_progress];
 
 @Injectable()
 export class PackingService {
@@ -21,8 +32,7 @@ export class PackingService {
   ) {}
 
   async findAll(opts: {
-    warehouseId: string;
-    role: Role;
+    warehouseId?: string;
     status?: OrderStatus;
     assignedTo?: string;
     search?: string;
@@ -32,7 +42,7 @@ export class PackingService {
     limit: number;
   }) {
     const where: Prisma.PackingOrderWhereInput = {};
-    if (opts.role !== Role.admin) where.warehouseId = opts.warehouseId;
+    if (opts.warehouseId) where.warehouseId = opts.warehouseId;
     if (opts.status) where.status = opts.status;
     if (opts.assignedTo) where.assignedToId = opts.assignedTo;
     if (opts.search) {
@@ -61,96 +71,103 @@ export class PackingService {
     return { data, meta: buildMeta(total, opts.page, opts.limit) };
   }
 
-  async findById(id: string) {
+  async findById(id: string, user: AuthUser) {
     const order = await this.prisma.packingOrder.findUnique({
       where: { id },
       include: { items: true, boxes: true, pickingOrder: true, assignedTo: { select: { id: true, name: true } } },
     });
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de packing no encontrada' });
+    assertWarehouseAccess(user, order.warehouseId);
     return order;
   }
 
-  async create(data: {
-    pickingOrderId: string;
-    reference: string;
-    assignedToId?: string;
-    notes?: string;
-    createdById: string;
-  }) {
-    const picking = await this.prisma.pickingOrder.findUnique({
-      where: { id: data.pickingOrderId },
-      include: { items: true, packingOrder: true },
-    });
+  async create(
+    data: { pickingOrderId: string; reference: string; assignedToId?: string; notes?: string },
+    user: AuthUser,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${data.pickingOrderId} FOR UPDATE`;
+      const picking = await tx.pickingOrder.findUnique({
+        where: { id: data.pickingOrderId },
+        include: { items: true, packingOrder: true },
+      });
 
-    if (!picking) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
-    if (picking.status !== OrderStatus.completed) {
-      throw new UnprocessableEntityException({ error: 'PICKING_INCOMPLETE', message: 'El picking debe estar completado para crear el packing' });
-    }
-    if (picking.packingOrder) {
-      throw new ConflictException({ error: 'ORDER_INVALID_STATUS', message: 'Ya existe un packing para este picking' });
-    }
+      if (!picking) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
+      assertWarehouseAccess(user, picking.warehouseId);
+      if (picking.status !== OrderStatus.completed) {
+        throw new UnprocessableEntityException({
+          error: 'PICKING_INCOMPLETE',
+          message: 'El picking debe estar completado para crear el packing',
+        });
+      }
+      if (picking.packingOrder) {
+        throw new ConflictException({ error: 'ORDER_INVALID_STATUS', message: 'Ya existe un packing para este picking' });
+      }
 
-    return this.prisma.packingOrder.create({
-      data: {
-        pickingOrderId: data.pickingOrderId,
-        reference: data.reference,
-        client: picking.client,
-        warehouseId: picking.warehouseId,
-        assignedToId: data.assignedToId,
-        notes: data.notes,
-        createdById: data.createdById,
-        items: {
-          create: picking.items.map((item) => ({
-            productId: item.productId,
-            productCode: item.productCode,
-            productName: item.productName,
-            quantity: item.pickedQuantity,
-            barcode: item.barcode ?? '',
-            unit: item.unit,
-          })),
+      const order = await tx.packingOrder.create({
+        data: {
+          pickingOrderId: data.pickingOrderId,
+          reference: data.reference,
+          client: picking.client,
+          warehouseId: picking.warehouseId,
+          assignedToId: data.assignedToId,
+          notes: data.notes,
+          createdById: user.id,
+          items: {
+            create: picking.items
+              .filter((item) => item.pickedQuantity > 0)
+              .map((item) => ({
+                productId: item.productId,
+                productCode: item.productCode,
+                productName: item.productName,
+                quantity: item.pickedQuantity,
+                barcode: item.barcode ?? '',
+                unit: item.unit,
+              })),
+          },
         },
-      },
-      include: { items: true },
+        include: { items: true },
+      });
+
+      await this.activity.log(
+        {
+          orderId: order.id,
+          orderType: 'packing',
+          action: 'created',
+          detail: `Packing creado desde ${picking.reference}`,
+          operator: user.name,
+          userId: user.id,
+          warehouseId: order.warehouseId,
+        },
+        tx,
+      );
+
+      return order;
     });
   }
 
-  async updateStatus(id: string, status: OrderStatus, userId: string, userName: string) {
-    const order = await this.findById(id);
-    const valid = this.isValidTransition(order.status, status);
-    if (!valid) {
-      throw new UnprocessableEntityException({ error: 'ORDER_INVALID_STATUS', message: `Transición de estado inválida: ${order.status} → ${status}` });
-    }
-
+  async updateStatus(id: string, status: OrderTargetStatus, user: AuthUser) {
     return this.prisma.$transaction(async (tx) => {
+      const order = await this.lockOrder(tx, id, user);
+      if (!ALLOWED_TRANSITIONS[order.status]?.includes(status)) {
+        throw new UnprocessableEntityException({
+          error: 'ORDER_INVALID_STATUS',
+          message: `Transición de estado inválida: ${order.status} → ${status}`,
+        });
+      }
+
       if (status === OrderStatus.completed) {
-        for (const item of order.items) {
-          const stock = await tx.warehouseStock.findUnique({
-            where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-          });
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              warehouseId: order.warehouseId,
-              type: 'salida_picking',
-              quantity: item.packedQuantity,
-              stockFisicoAntes: stock?.stockFisico ?? 0,
-              stockFisicoDespues: (stock?.stockFisico ?? 0) - item.packedQuantity,
-              stockReservadoAntes: stock?.stockReservado ?? 0,
-              stockReservadoDespues: (stock?.stockReservado ?? 0) - item.packedQuantity,
-              referenceType: 'packing',
-              referenceId: id,
-              operatorId: userId,
-              operatorName: userName,
-            },
-          });
-          await tx.warehouseStock.update({
-            where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-            data: {
-              stockFisico: { decrement: item.packedQuantity },
-              stockReservado: { decrement: item.packedQuantity },
-            },
+        if (!order.items.some((i) => i.packedQuantity > 0)) {
+          throw new UnprocessableEntityException({
+            error: 'PACKING_EMPTY',
+            message: 'No se puede completar un packing sin ítems empacados',
           });
         }
+        await this.consumeReservations(tx, order, user);
+      }
+
+      if (status === OrderStatus.cancelled) {
+        await this.consumeReservations(tx, { ...order, items: [] }, user);
       }
 
       const updated = await tx.packingOrder.update({
@@ -163,85 +180,178 @@ export class PackingService {
         include: { items: true, boxes: true },
       });
 
-      await this.activity.log({
-        orderId: id,
-        orderType: 'packing',
-        action: status === OrderStatus.completed ? 'stock_confirmed' : status,
-        detail: `Packing ${status}`,
-        operator: userName,
-        userId,
-        warehouseId: order.warehouseId,
-      });
+      await this.activity.log(
+        {
+          orderId: id,
+          orderType: 'packing',
+          action: status === OrderStatus.completed ? 'stock_confirmed' : status,
+          detail: `Packing ${status}`,
+          operator: user.name,
+          userId: user.id,
+          warehouseId: order.warehouseId,
+        },
+        tx,
+      );
 
       return updated;
     });
   }
 
-  async addBox(packingOrderId: string, label: string) {
-    return this.prisma.packingBox.create({ data: { packingOrderId, label } });
+  async updateItem(orderId: string, itemId: string, packedQuantity: number, user: AuthUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await this.lockOrder(tx, orderId, user);
+      this.assertEditable(order);
+
+      const item = order.items.find((i) => i.id === itemId);
+      if (!item) throw new NotFoundException({ error: 'ITEM_NOT_FOUND', message: 'Ítem no encontrado' });
+      if (packedQuantity > item.quantity) {
+        throw new UnprocessableEntityException({
+          error: 'QUANTITY_EXCEEDED',
+          message: 'La cantidad empacada no puede superar la cantidad total del ítem',
+        });
+      }
+      return tx.packingItem.update({ where: { id: itemId }, data: { packedQuantity } });
+    });
   }
 
-  async sealBox(packingOrderId: string, boxId: string) {
-    const box = await this.prisma.packingBox.findFirst({ where: { id: boxId, packingOrderId } });
-    if (!box) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Caja no encontrada' });
-    return this.prisma.packingBox.update({ where: { id: boxId }, data: { sealed: true } });
-  }
-
-  async updateItem(orderId: string, itemId: string, packedQuantity: number) {
-    const order = await this.findById(orderId);
-    const item = order.items.find((i) => i.id === itemId);
-    if (!item) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Ítem no encontrado' });
-    if (packedQuantity > item.quantity) {
-      throw new BadRequestException({ error: 'VALIDATION_ERROR', message: 'La cantidad empacada no puede superar la cantidad total del ítem' });
-    }
-    return this.prisma.packingItem.update({ where: { id: itemId }, data: { packedQuantity } });
-  }
-
-  async update(id: string, data: Partial<{ notes: string; assignedToId: string; totalWeight: number }>) {
-    await this.findById(id);
+  async update(id: string, data: Partial<{ notes: string; assignedToId: string; totalWeight: number }>, user: AuthUser) {
+    const order = await this.findById(id, user);
+    this.assertEditable(order);
     return this.prisma.packingOrder.update({ where: { id }, data });
   }
 
-  async addPhoto(id: string, url: string, operator: AuthUser) {
-    const order = await this.findById(id);
-    const updated = await this.prisma.packingOrder.update({
-      where: { id },
-      data: { photos: { push: url } },
-    });
-    await this.activity.log({
-      orderId: id, orderType: 'packing', action: 'photo_added',
-      detail: 'Foto añadida', operator: operator.name, userId: operator.id, warehouseId: order.warehouseId,
-    });
-    return updated;
+  async addBox(packingOrderId: string, label: string, user: AuthUser) {
+    const order = await this.findById(packingOrderId, user);
+    this.assertEditable(order);
+    return this.prisma.packingBox.create({ data: { packingOrderId, label } });
   }
 
-  async removePhoto(id: string, photoUrl: string, operator: AuthUser) {
-    const order = await this.findById(id);
-    const updated = await this.prisma.packingOrder.update({
-      where: { id },
-      data: { photos: order.photos.filter((p) => p !== photoUrl) },
+  async sealBox(packingOrderId: string, boxId: string, user: AuthUser) {
+    const order = await this.findById(packingOrderId, user);
+    this.assertEditable(order);
+    const box = order.boxes.find((b) => b.id === boxId);
+    if (!box) throw new NotFoundException({ error: 'BOX_NOT_FOUND', message: 'Caja no encontrada' });
+    return this.prisma.packingBox.update({ where: { id: boxId }, data: { sealed: true } });
+  }
+
+  async addPhoto(id: string, url: string, user: AuthUser) {
+    const order = await this.findById(id, user);
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.packingOrder.update({ where: { id }, data: { photos: { push: url } } });
+      await this.activity.log(
+        {
+          orderId: id, orderType: 'packing', action: 'photo_added',
+          detail: 'Foto añadida', operator: user.name, userId: user.id, warehouseId: order.warehouseId,
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  async removePhoto(id: string, photoUrl: string, user: AuthUser) {
+    const order = await this.findById(id, user);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.packingOrder.update({
+        where: { id },
+        data: { photos: order.photos.filter((p) => p !== photoUrl) },
+      });
+      await this.activity.log(
+        {
+          orderId: id, orderType: 'packing', action: 'photo_removed',
+          detail: 'Foto eliminada', operator: user.name, userId: user.id, warehouseId: order.warehouseId,
+        },
+        tx,
+      );
+      return result;
     });
     this.uploads.deleteFile(photoUrl);
-    await this.activity.log({
-      orderId: id, orderType: 'packing', action: 'photo_removed',
-      detail: 'Foto eliminada', operator: operator.name, userId: operator.id, warehouseId: order.warehouseId,
-    });
     return updated;
   }
 
-  async delete(id: string) {
-    const order = await this.findById(id);
+  // Deleting a pending packing keeps the picking reservation so a new packing can be created.
+  async delete(id: string, user: AuthUser) {
+    const order = await this.findById(id, user);
     if (order.status !== OrderStatus.pending) {
-      throw new UnprocessableEntityException({ error: 'ORDER_INVALID_STATUS', message: 'Solo se pueden eliminar órdenes pending' });
+      throw new UnprocessableEntityException({
+        error: 'ORDER_INVALID_STATUS',
+        message: 'Solo se pueden eliminar órdenes pending',
+      });
     }
     return this.prisma.packingOrder.delete({ where: { id } });
   }
 
-  private isValidTransition(from: OrderStatus, to: OrderStatus): boolean {
-    const transitions: Record<string, OrderStatus[]> = {
-      pending: [OrderStatus.in_progress, OrderStatus.cancelled],
-      in_progress: [OrderStatus.completed, OrderStatus.cancelled],
-    };
-    return transitions[from]?.includes(to) ?? false;
+  private async lockOrder(tx: Prisma.TransactionClient, id: string, user: AuthUser): Promise<LockedPackingOrder> {
+    await tx.$queryRaw`SELECT id FROM packing_orders WHERE id = ${id} FOR UPDATE`;
+    const order = await tx.packingOrder.findUnique({
+      where: { id },
+      include: { items: true, pickingOrder: { include: { items: true } } },
+    });
+    if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de packing no encontrada' });
+    assertWarehouseAccess(user, order.warehouseId);
+    const { pickingOrder, ...rest } = order;
+    return { ...rest, pickingItems: pickingOrder.items };
+  }
+
+  private assertEditable(order: PackingOrder) {
+    if (!EDITABLE_STATUSES.includes(order.status)) {
+      throw new UnprocessableEntityException({
+        error: 'ORDER_INVALID_STATUS',
+        message: `La orden está ${order.status} y no admite cambios`,
+      });
+    }
+  }
+
+  // Ships the packed quantities and releases the whole picking reservation (packed or not).
+  private async consumeReservations(tx: Prisma.TransactionClient, order: LockedPackingOrder, user: AuthUser) {
+    const reserved = sumByProduct(order.pickingItems, (i) => i.reservedQuantity);
+    const shipped = sumByProduct(order.items, (i) => i.packedQuantity);
+    const stocks = await lockWarehouseStocks(tx, order.warehouseId, [...reserved.keys(), ...shipped.keys()]);
+
+    for (const productId of new Set([...reserved.keys(), ...shipped.keys()])) {
+      const stock = stocks.get(productId);
+      if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
+
+      const release = reserved.get(productId) ?? 0;
+      const quantity = shipped.get(productId) ?? 0;
+      const fisicoDespues = stock.stockFisico - quantity;
+      const reservadoDespues = stock.stockReservado - release;
+      if (fisicoDespues < reservadoDespues) {
+        throw new ConflictException({
+          error: 'STOCK_INSUFICIENTE',
+          message: 'El stock físico no alcanza para despachar sin afectar otras reservas',
+          details: [{ productId, requested: quantity, available: stock.stockFisico - reservadoDespues }],
+        });
+      }
+
+      await tx.warehouseStock.update({
+        where: { id: stock.id },
+        data: { stockFisico: fisicoDespues, stockReservado: reservadoDespues },
+      });
+
+      if (quantity > 0) {
+        await tx.stockMovement.create({
+          data: {
+            productId,
+            warehouseId: order.warehouseId,
+            type: 'salida_picking',
+            quantity,
+            stockFisicoAntes: stock.stockFisico,
+            stockFisicoDespues: fisicoDespues,
+            stockReservadoAntes: stock.stockReservado,
+            stockReservadoDespues: reservadoDespues,
+            referenceType: 'packing',
+            referenceId: order.id,
+            operatorId: user.id,
+            operatorName: user.name,
+          },
+        });
+      }
+    }
+
+    await tx.pickingItem.updateMany({
+      where: { pickingOrderId: order.pickingOrderId },
+      data: { reservedQuantity: 0 },
+    });
   }
 }

@@ -1,29 +1,38 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
-  ConflictException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { OrderStatus, PickingItem, PickingOrder, Prisma, Priority } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../activity/activity.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { OrderStatus, Prisma, Priority, Role } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
+import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
+import { OrderTargetStatus } from './dto/create-picking.dto';
+
+type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
+
+const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  pending: [OrderStatus.in_progress, OrderStatus.cancelled],
+  in_progress: [OrderStatus.completed, OrderStatus.cancelled],
+};
+
+const EDITABLE_STATUSES: OrderStatus[] = [OrderStatus.pending, OrderStatus.in_progress];
 
 @Injectable()
 export class PickingService {
   constructor(
     private prisma: PrismaService,
     private activity: ActivityService,
-    private notifications: NotificationsService,
     private uploads: UploadsService,
   ) {}
 
   async findAll(opts: {
-    warehouseId: string;
-    role: Role;
+    warehouseId?: string;
     status?: OrderStatus;
     assignedTo?: string;
     search?: string;
@@ -33,7 +42,7 @@ export class PickingService {
     limit: number;
   }) {
     const where: Prisma.PickingOrderWhereInput = {};
-    if (opts.role !== Role.admin) where.warehouseId = opts.warehouseId;
+    if (opts.warehouseId) where.warehouseId = opts.warehouseId;
     if (opts.status) where.status = opts.status;
     if (opts.assignedTo) where.assignedToId = opts.assignedTo;
     if (opts.search) {
@@ -62,129 +71,122 @@ export class PickingService {
     return { data, meta: buildMeta(total, opts.page, opts.limit) };
   }
 
-  async findById(id: string) {
+  async findById(id: string, user: AuthUser) {
     const order = await this.prisma.pickingOrder.findUnique({
       where: { id },
       include: { items: true, assignedTo: { select: { id: true, name: true } } },
     });
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
+    assertWarehouseAccess(user, order.warehouseId);
     return order;
   }
 
-  async create(data: {
-    reference: string;
-    client: string;
-    warehouseId: string;
-    priority?: Priority;
-    assignedToId?: string;
-    notes?: string;
-    items: { productId: string; quantity: number }[];
-    createdById: string;
-  }) {
+  async create(
+    data: {
+      reference: string;
+      client: string;
+      warehouseId: string;
+      priority?: Priority;
+      assignedToId?: string;
+      notes?: string;
+      items: { productId: string; quantity: number }[];
+    },
+    user: AuthUser,
+  ) {
     return this.prisma.$transaction(async (tx) => {
-      const stockErrors: { productId: string; productCode: string; solicitado: number; disponible: number }[] = [];
+      const requested = sumByProduct(data.items, (i) => i.quantity);
+      const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);
 
-      for (const item of data.items) {
-        const stock = await tx.warehouseStock.findUnique({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: data.warehouseId } },
-          include: { product: true },
-        });
+      const shortages = [...requested].flatMap(([productId, quantity]) => {
+        const stock = stocks.get(productId);
         const disponible = stock ? stock.stockFisico - stock.stockReservado : 0;
-        if (disponible < item.quantity) {
-          stockErrors.push({
-            productId: item.productId,
-            productCode: stock?.product?.code ?? '',
-            solicitado: item.quantity,
-            disponible,
-          });
-        }
-      }
-
-      if (stockErrors.length > 0) {
+        return disponible < quantity ? [{ productId, solicitado: quantity, disponible }] : [];
+      });
+      if (shortages.length > 0) {
         throw new ConflictException({
           error: 'STOCK_INSUFICIENTE',
           message: 'Stock insuficiente para uno o más ítems',
-          items: stockErrors,
+          items: shortages,
         });
       }
 
-      const itemsWithDetails = await Promise.all(
-        data.items.map(async (item) => {
-          const stock = await tx.warehouseStock.findUnique({
-            where: { productId_warehouseId: { productId: item.productId, warehouseId: data.warehouseId } },
-            include: { product: true },
-          });
-          return {
-            productId: item.productId,
-            productCode: stock?.product?.code ?? '',
-            productName: stock?.product?.name ?? '',
-            quantity: item.quantity,
-            location: stock?.location ?? '',
-            barcode: stock?.product?.barcode ?? '',
-            unit: stock?.product?.unit ?? 'UND',
-          };
-        }),
-      );
+      for (const [productId, quantity] of requested) {
+        await tx.warehouseStock.update({
+          where: { id: stocks.get(productId)!.id },
+          data: { stockReservado: { increment: quantity } },
+        });
+      }
+
+      const products = await tx.product.findMany({ where: { id: { in: [...requested.keys()] } } });
+      const productById = new Map(products.map((p) => [p.id, p]));
 
       const order = await tx.pickingOrder.create({
         data: {
           reference: data.reference,
           client: data.client,
           warehouseId: data.warehouseId,
-          priority: data.priority ?? 'medium',
+          priority: data.priority ?? Priority.medium,
           assignedToId: data.assignedToId,
           notes: data.notes,
-          createdById: data.createdById,
-          items: { create: itemsWithDetails },
+          createdById: user.id,
+          items: {
+            create: data.items.map((item) => {
+              const product = productById.get(item.productId)!;
+              return {
+                productId: item.productId,
+                productCode: product.code,
+                productName: product.name,
+                quantity: item.quantity,
+                reservedQuantity: item.quantity,
+                location: stocks.get(item.productId)!.location,
+                barcode: product.barcode ?? '',
+                unit: product.unit,
+              };
+            }),
+          },
         },
         include: { items: true },
       });
+
+      await this.activity.log(
+        {
+          orderId: order.id,
+          orderType: 'picking',
+          action: 'created',
+          detail: `Orden creada con ${order.items.length} ítems`,
+          operator: user.name,
+          userId: user.id,
+          warehouseId: order.warehouseId,
+        },
+        tx,
+      );
 
       return order;
     });
   }
 
-  async updateStatus(id: string, status: OrderStatus, userId: string, userName: string) {
-    const order = await this.findById(id);
-    const valid = this.isValidTransition(order.status, status);
-    if (!valid) {
-      throw new UnprocessableEntityException({
-        error: 'ORDER_INVALID_STATUS',
-        message: `No se puede pasar de ${order.status} a ${status}`,
-      });
-    }
-
+  async updateStatus(id: string, status: OrderTargetStatus, user: AuthUser) {
     return this.prisma.$transaction(async (tx) => {
-      if (status === OrderStatus.cancelled && order.status === OrderStatus.in_progress) {
-        for (const item of order.items) {
-          if (item.reservedQuantity > 0) {
-            await tx.warehouseStock.update({
-              where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-              data: { stockReservado: { decrement: item.reservedQuantity } },
-            });
-            const stock = await tx.warehouseStock.findUnique({
-              where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-            });
-            await tx.stockMovement.create({
-              data: {
-                productId: item.productId,
-                warehouseId: order.warehouseId,
-                type: 'entrada_devolucion',
-                quantity: item.reservedQuantity,
-                stockFisicoAntes: stock?.stockFisico ?? 0,
-                stockFisicoDespues: stock?.stockFisico ?? 0,
-                stockReservadoAntes: (stock?.stockReservado ?? 0) + item.reservedQuantity,
-                stockReservadoDespues: stock?.stockReservado ?? 0,
-                referenceType: 'picking',
-                referenceId: id,
-                notes: 'Liberación por cancelación de picking',
-                operatorId: userId,
-                operatorName: userName,
-              },
-            });
-          }
+      const order = await this.lockOrder(tx, id, user);
+      if (!ALLOWED_TRANSITIONS[order.status]?.includes(status)) {
+        throw new UnprocessableEntityException({
+          error: 'ORDER_INVALID_STATUS',
+          message: `No se puede pasar de ${order.status} a ${status}`,
+        });
+      }
+
+      if (status === OrderStatus.completed) {
+        if (!order.items.some((i) => i.pickedQuantity > 0)) {
+          throw new UnprocessableEntityException({
+            error: 'PICKING_EMPTY',
+            message: 'No se puede completar un picking sin ítems recogidos',
+          });
         }
-        await tx.pickingItem.updateMany({ where: { pickingOrderId: id }, data: { reservedQuantity: 0 } });
+        await this.settleReservations(tx, order, (item) => item.pickedQuantity);
+      }
+
+      if (status === OrderStatus.cancelled) {
+        await this.settleReservations(tx, order, () => 0);
       }
 
       const updated = await tx.pickingOrder.update({
@@ -197,106 +199,145 @@ export class PickingService {
         include: { items: true },
       });
 
-      await this.activity.log({
-        orderId: id,
-        orderType: 'picking',
-        action: status === OrderStatus.cancelled ? 'cancelled' : status === OrderStatus.completed ? 'completed' : 'started',
-        detail: `Orden ${status}`,
-        operator: userName,
-        userId,
-        warehouseId: order.warehouseId,
-      });
+      await this.activity.log(
+        {
+          orderId: id,
+          orderType: 'picking',
+          action: status === OrderStatus.in_progress ? 'started' : status,
+          detail: `Orden ${status}`,
+          operator: user.name,
+          userId: user.id,
+          warehouseId: order.warehouseId,
+        },
+        tx,
+      );
 
       return updated;
     });
   }
 
-  async updateItem(orderId: string, itemId: string, pickedQuantity: number) {
-    const order = await this.findById(orderId);
-    const item = order.items.find((i) => i.id === itemId);
-    if (!item) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Ítem no encontrado' });
-
+  async updateItem(orderId: string, itemId: string, pickedQuantity: number, user: AuthUser) {
     return this.prisma.$transaction(async (tx) => {
-      const delta = pickedQuantity - item.reservedQuantity;
+      const order = await this.lockOrder(tx, orderId, user);
+      this.assertEditable(order);
 
-      if (delta > 0) {
-        const stock = await tx.warehouseStock.findUnique({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-        });
-        const disponible = (stock?.stockFisico ?? 0) - (stock?.stockReservado ?? 0);
-        if (disponible < delta) {
-          throw new ConflictException({
-            error: 'STOCK_INSUFICIENTE',
-            message: 'No hay stock disponible para reservar.',
-          });
-        }
-        await tx.warehouseStock.update({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-          data: { stockReservado: { increment: delta } },
-        });
-      } else if (delta < 0) {
-        await tx.warehouseStock.update({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: order.warehouseId } },
-          data: { stockReservado: { decrement: Math.abs(delta) } },
+      const item = order.items.find((i) => i.id === itemId);
+      if (!item) throw new NotFoundException({ error: 'ITEM_NOT_FOUND', message: 'Ítem no encontrado' });
+      if (pickedQuantity > item.quantity) {
+        throw new UnprocessableEntityException({
+          error: 'QUANTITY_EXCEEDED',
+          message: 'La cantidad recogida no puede superar la cantidad solicitada',
         });
       }
 
-      const updatedItem = await tx.pickingItem.update({
-        where: { id: itemId },
-        data: { pickedQuantity, reservedQuantity: pickedQuantity },
-      });
-
+      const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
       await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
-
       return updatedItem;
     });
   }
 
-  async update(id: string, data: Partial<{ client: string; notes: string; priority: Priority; assignedToId: string }>) {
-    await this.findById(id);
-    return this.prisma.pickingOrder.update({ where: { id }, data: { ...data, updatedAt: new Date() } });
+  async update(
+    id: string,
+    data: Partial<{ client: string; notes: string; priority: Priority; assignedToId: string }>,
+    user: AuthUser,
+  ) {
+    const order = await this.findById(id, user);
+    this.assertEditable(order);
+    return this.prisma.pickingOrder.update({ where: { id }, data });
   }
 
-  async addPhoto(id: string, url: string, operator: AuthUser) {
-    const order = await this.findById(id);
-    const updated = await this.prisma.pickingOrder.update({
-      where: { id },
-      data: { photos: { push: url } },
+  async addPhoto(id: string, url: string, user: AuthUser) {
+    const order = await this.findById(id, user);
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.pickingOrder.update({ where: { id }, data: { photos: { push: url } } });
+      await this.activity.log(
+        {
+          orderId: id, orderType: 'picking', action: 'photo_added',
+          detail: 'Foto añadida', operator: user.name, userId: user.id, warehouseId: order.warehouseId,
+        },
+        tx,
+      );
+      return updated;
     });
-    await this.activity.log({
-      orderId: id, orderType: 'picking', action: 'photo_added',
-      detail: 'Foto añadida', operator: operator.name, userId: operator.id, warehouseId: order.warehouseId,
-    });
-    return updated;
   }
 
-  async removePhoto(id: string, photoUrl: string, operator: AuthUser) {
-    const order = await this.findById(id);
-    const updated = await this.prisma.pickingOrder.update({
-      where: { id },
-      data: { photos: order.photos.filter((p) => p !== photoUrl) },
+  async removePhoto(id: string, photoUrl: string, user: AuthUser) {
+    const order = await this.findById(id, user);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.pickingOrder.update({
+        where: { id },
+        data: { photos: order.photos.filter((p) => p !== photoUrl) },
+      });
+      await this.activity.log(
+        {
+          orderId: id, orderType: 'picking', action: 'photo_removed',
+          detail: 'Foto eliminada', operator: user.name, userId: user.id, warehouseId: order.warehouseId,
+        },
+        tx,
+      );
+      return result;
     });
     this.uploads.deleteFile(photoUrl);
-    await this.activity.log({
-      orderId: id, orderType: 'picking', action: 'photo_removed',
-      detail: 'Foto eliminada', operator: operator.name, userId: operator.id, warehouseId: order.warehouseId,
-    });
     return updated;
   }
 
-  async delete(id: string) {
-    const order = await this.findById(id);
-    if (order.status !== OrderStatus.pending) {
-      throw new UnprocessableEntityException({ error: 'ORDER_INVALID_STATUS', message: 'Solo se pueden eliminar órdenes en estado pending' });
-    }
-    return this.prisma.pickingOrder.delete({ where: { id } });
+  async delete(id: string, user: AuthUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await this.lockOrder(tx, id, user);
+      if (order.status !== OrderStatus.pending) {
+        throw new UnprocessableEntityException({
+          error: 'ORDER_INVALID_STATUS',
+          message: 'Solo se pueden eliminar órdenes en estado pending',
+        });
+      }
+      await this.settleReservations(tx, order, () => 0);
+      return tx.pickingOrder.delete({ where: { id } });
+    });
   }
 
-  private isValidTransition(from: OrderStatus, to: OrderStatus): boolean {
-    const transitions: Record<string, OrderStatus[]> = {
-      pending: [OrderStatus.in_progress, OrderStatus.cancelled],
-      in_progress: [OrderStatus.completed, OrderStatus.cancelled],
-    };
-    return transitions[from]?.includes(to) ?? false;
+  private async lockOrder(tx: Prisma.TransactionClient, id: string, user: AuthUser): Promise<LockedPickingOrder> {
+    await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${id} FOR UPDATE`;
+    const order = await tx.pickingOrder.findUnique({ where: { id }, include: { items: true } });
+    if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
+    assertWarehouseAccess(user, order.warehouseId);
+    return order;
+  }
+
+  private assertEditable(order: PickingOrder) {
+    if (!EDITABLE_STATUSES.includes(order.status)) {
+      throw new UnprocessableEntityException({
+        error: 'ORDER_INVALID_STATUS',
+        message: `La orden está ${order.status} y no admite cambios`,
+      });
+    }
+  }
+
+  // Moves each item's reservation to `target(item)`, reserving or releasing the difference.
+  private async settleReservations(
+    tx: Prisma.TransactionClient,
+    order: LockedPickingOrder,
+    target: (item: PickingItem) => number,
+  ) {
+    const stocks = await lockWarehouseStocks(tx, order.warehouseId, order.items.map((i) => i.productId));
+
+    for (const item of order.items) {
+      const delta = target(item) - item.reservedQuantity;
+      if (delta === 0) continue;
+
+      const stock = stocks.get(item.productId);
+      if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
+      const available = stock.stockFisico - stock.stockReservado;
+      if (delta > available) {
+        throw new ConflictException({
+          error: 'STOCK_INSUFICIENTE',
+          message: 'No hay stock disponible para reservar',
+          details: [{ productId: item.productId, requested: delta, available }],
+        });
+      }
+
+      stock.stockReservado += delta;
+      await tx.warehouseStock.update({ where: { id: stock.id }, data: { stockReservado: stock.stockReservado } });
+      await tx.pickingItem.update({ where: { id: item.id }, data: { reservedQuantity: target(item) } });
+    }
   }
 }

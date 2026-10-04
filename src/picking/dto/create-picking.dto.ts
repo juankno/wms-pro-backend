@@ -1,31 +1,42 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Priority } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsPositive,
   IsString,
+  MaxLength,
+  Min,
   ValidateNested,
-} from "class-validator";
+} from 'class-validator';
 
 class PickingItemDto {
-  @ApiProperty() @IsString() productId!: string;
-  @ApiProperty() @IsInt() @IsPositive() quantity!: number;
+  @ApiProperty() @IsString() @IsNotEmpty() productId!: string;
+  @ApiProperty({ minimum: 1 }) @IsInt() @IsPositive() quantity!: number;
 }
 
 export class CreatePickingDto {
-  @ApiProperty() @IsString() reference!: string;
-  @ApiProperty() @IsString() client!: string;
-  @ApiProperty() @IsString() warehouseId!: string;
-  @ApiPropertyOptional({ enum: ["low", "medium", "high"] })
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50) reference!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(200) client!: string;
+
+  @ApiPropertyOptional({ description: "Defaults to the user's warehouse" })
   @IsOptional()
-  @IsEnum(["low", "medium", "high"])
-  priority?: "low" | "medium" | "high";
+  @IsString()
+  warehouseId?: string;
+
+  @ApiPropertyOptional({ enum: Priority })
+  @IsOptional()
+  @IsEnum(Priority)
+  priority?: Priority;
+
   @ApiPropertyOptional() @IsOptional() @IsString() assignedToId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string;
+
   @ApiProperty({ type: [PickingItemDto] })
   @IsArray()
   @ArrayMinSize(1)
@@ -34,12 +45,26 @@ export class CreatePickingDto {
   items!: PickingItemDto[];
 }
 
+export class UpdatePickingDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @IsNotEmpty() @MaxLength(200) client?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string;
+  @ApiPropertyOptional({ enum: Priority }) @IsOptional() @IsEnum(Priority) priority?: Priority;
+  @ApiPropertyOptional() @IsOptional() @IsString() assignedToId?: string;
+}
+
+export const ORDER_TARGET_STATUSES = ['in_progress', 'completed', 'cancelled'] as const;
+export type OrderTargetStatus = (typeof ORDER_TARGET_STATUSES)[number];
+
 export class UpdatePickingStatusDto {
-  @ApiProperty({ enum: ["in_progress", "completed", "cancelled"] })
-  @IsEnum(["in_progress", "completed", "cancelled"])
-  status!: "in_progress" | "completed" | "cancelled";
+  @ApiProperty({ enum: ORDER_TARGET_STATUSES })
+  @IsEnum(ORDER_TARGET_STATUSES)
+  status!: OrderTargetStatus;
 }
 
 export class UpdatePickingItemDto {
-  @ApiProperty() @IsInt() @IsPositive() pickedQuantity!: number;
+  @ApiProperty({ minimum: 0 }) @IsInt() @Min(0) pickedQuantity!: number;
+}
+
+export class AddPhotoDto {
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(500) url!: string;
 }
