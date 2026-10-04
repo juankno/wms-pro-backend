@@ -34,6 +34,9 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 | D5 | Todo endpoint recibe **DTOs con class-validator**. Prohibidos los tipos inline en `@Body()`. | Los tipos inline no se validan (ValidationPipe los ignora). |
 | D6 | Las operaciones móviles que se puedan reintentar llevan **`Idempotency-Key`**. | Requisito para el modo sin conexión. |
 | D7 | Logging estructurado con Pino y trazas OpenTelemetry. | Diagnóstico por tenant en producción. |
+| D8 | Código y comentarios en **inglés**, comentarios mínimos. Los textos que ve el usuario (mensajes de error de la API, Swagger, UI) siguen en español hasta implementar i18n en la Fase 8. La API siempre expone códigos de error estables en inglés (`WAREHOUSE_FORBIDDEN`, …). | Producto SaaS internacional; los clientes traducen a partir del código. |
+| D9 | Los nombres del modelo de datos en español (`stockFisico`, `entrada_compra`, …) se renombran a inglés en la **Fase 1**, en la misma migración que agrega `tenantId`, como cambio de contrato coordinado (API v2) en los tres repos. | Tocar el esquema y el contrato una sola vez. |
+| D10 | Tests con **Vitest + SWC** (NestJS 12 es solo ESM y Jest no lo carga). Integración contra una BD desechable (`TEST_DATABASE_URL`). Nunca se commitea con errores de compilación, lint o tests. | Calidad mínima exigible a cada PR. |
 
 ## 4. Diagnóstico inicial (2026-10-04)
 
@@ -119,6 +122,7 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [ ] 0.9 Docker y CI en los tres repos (B20, F7, M12).
 
 ### Fase 1 — Base SaaS (3–4 semanas)
+- [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1.
 - [ ] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
 - [ ] 1.2 Extensión de Prisma que inyecte `tenantId` y políticas RLS en PostgreSQL.
 - [ ] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
