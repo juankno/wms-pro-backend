@@ -134,10 +134,10 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [x] 1.8 Límites por plan (usuarios, bodegas, operaciones al mes). Backend #15.
 
 ### Fase 2 — Datos maestros configurables (3 semanas)
-- [x] 2.1 Ubicaciones jerárquicas (bodega → zona → pasillo → estante → nivel → posición) con tipo y capacidad. Backend #20 (API y generación por niveles); falta la UI.
-- [x] 2.2 Stock por ubicación (`LocationStock`), con migración desde `WarehouseStock.location`. Backend #22 (contador `picked`, reubicación, picking por ubicación); falta la UI web y móvil.
-- [ ] 2.3 Clientes y proveedores.
-- [ ] 2.4 Unidades de medida con conversiones y varios códigos de barras por producto.
+- [x] 2.1 Ubicaciones jerárquicas (bodega → zona → pasillo → estante → nivel → posición) con tipo y capacidad. Backend #20 (API y generación por niveles), web #8.
+- [x] 2.2 Stock por ubicación (`LocationStock`), con migración desde `WarehouseStock.location`. Backend #22 (contador `picked`, reubicación, picking por ubicación), web #8, móvil #6.
+- [x] 2.3 Clientes y proveedores. Backend #23 (API; el picking puede enlazar un cliente); falta la UI.
+- [ ] 2.4 Unidades de medida con conversiones y varios códigos de barras por producto. Backend #24: códigos adicionales con cantidad por lectura (empaques); falta UI y uso de `scanQuantity` en el móvil.
 - [ ] 2.5 Lotes, series y vencimiento (activables por tenant y por producto). Cantidades decimales.
 - [ ] 2.6 Campos personalizados por tenant.
 - [ ] 2.7 Importación masiva Excel/CSV (productos, ubicaciones, stock inicial) e impresión de etiquetas.
@@ -187,14 +187,14 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 - **Fase 0 completa** (pendiente de merge). B17 quedó resuelto con la tarea 1.7.
 - **Fase 1 completa** (pendiente de merge).
-- **Fase 2 en curso:** 2.1 y 2.2 con API lista; falta su UI web y móvil.
+- **Fase 2 en curso:** 2.1 y 2.2 completas; 2.3 y 2.4 con API lista, falta su UI.
 - **Mergeados:** backend #1–#6.
 - **PRs abiertos, con CI en verde (mergear en orden por repo):**
-  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación).
-  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma).
-  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos).
-- **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con web #6 y móvil #5; backend #19 con web #7.
+  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación) → #23 (clientes y proveedores) → #24 (códigos de barras).
+  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma) → #8 (ubicaciones).
+  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos) → #6 (ubicaciones).
+- **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con web #6 y móvil #5; backend #19 con web #7; backend #22 con web #8 y móvil #6.
 - **Variables nuevas:** `STORAGE_DRIVER`/`S3_*` (#14), `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL` (#18). Ver `.env.example`.
-- **Siguiente tarea:** UI de ubicaciones y stock por ubicación (web y móvil), luego 2.3 (clientes y proveedores).
-- **Sin probar en navegador:** web #6 y #7 pasaron lint, typecheck, tests y build, pero no se recorrieron a mano.
+- **Siguiente tarea:** UI de clientes/proveedores y códigos de barras, luego 2.5 (lotes, series, vencimiento y decimales).
+- **Prueba en navegador (Playwright, 2026-10-04):** web #6–#8 cargan sin errores de consola ni de API (usuarios, roles, auditoría, empresa, ubicaciones, stock, producto, invitación, consola de plataforma) y la sesión de soporte entra, muestra el banner y vuelve a la consola. Móvil #5 y #6 sin probar en dispositivo.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
