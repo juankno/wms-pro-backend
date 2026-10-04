@@ -23,6 +23,10 @@ export default defineConfig({
           include: ['test/**/*.e2e-spec.ts'],
           testTimeout: 30_000,
           fileParallelism: false,
+          env: {
+            JWT_SECRET: process.env.JWT_SECRET ?? 'test-access-secret',
+            JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ?? 'test-refresh-secret',
+          },
         },
       },
     ],
