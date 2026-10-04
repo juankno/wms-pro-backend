@@ -5,14 +5,17 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { authConfig } from '../config/env';
 
 @Global()
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'secret',
-      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '1h') as never },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const { accessSecret, accessTtlSeconds } = authConfig();
+        return { secret: accessSecret, signOptions: { expiresIn: accessTtlSeconds } };
+      },
     }),
     UsersModule,
   ],

@@ -4,30 +4,14 @@ import {
 import {
   ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-
-class CreateUserDto {
-  @IsString() username!: string;
-  @IsString() name!: string;
-  @IsEmail() email!: string;
-  @IsString() @MinLength(6) password!: string;
-  @IsEnum(Role) role!: Role;
-  @IsOptional() @IsString() warehouseId?: string;
-}
-
-class UpdateUserDto {
-  @IsOptional() @IsString() name?: string;
-  @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() @MinLength(6) password?: string;
-  @IsOptional() @IsEnum(Role) role?: Role;
-  @IsOptional() @IsString() warehouseId?: string;
-  @IsOptional() active?: boolean;
-}
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthUser } from '../common/types/request-with-user.interface';
+import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
+import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 
 @ApiTags('users')
 @ApiBearerAuth('access-token')
@@ -48,7 +32,8 @@ export class UsersController {
   @ApiOperation({ summary: 'Usuarios activos de un almacén' })
   @ApiParam({ name: 'warehouseId', example: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec' })
   @ApiResponse({ status: 200, description: 'Lista de usuarios del almacén' })
-  findByWarehouse(@Param('warehouseId') warehouseId: string) {
+  findByWarehouse(@Param('warehouseId') warehouseId: string, @CurrentUser() user: AuthUser) {
+    assertWarehouseAccess(user, warehouseId);
     return this.usersService.findByWarehouse(warehouseId);
   }
 
@@ -65,7 +50,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Actualizar o activar/desactivar usuario (solo admin)' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, description: 'Usuario actualizado' })
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: AuthUser) {
+    return this.usersService.update(id, dto, user);
   }
 }

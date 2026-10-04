@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
+import { AuthUser } from '../common/types/request-with-user.interface';
 
 const USER_SELECT = {
   id: true,
@@ -73,15 +74,42 @@ export class UsersService {
       warehouseId?: string | null;
       active?: boolean;
     },
+    actor: AuthUser,
   ) {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND', message: 'Usuario no encontrado' });
+
+    const deactivates = data.active === false;
+    const demotesAdmin = target.role === Role.admin && data.role !== undefined && data.role !== Role.admin;
+    if (id === actor.id && (deactivates || demotesAdmin)) {
+      throw new UnprocessableEntityException({
+        error: 'CANNOT_MODIFY_SELF',
+        message: 'No puedes desactivarte ni quitarte el rol de administrador',
+      });
+    }
+
     const { password, warehouseId, ...rest } = data;
     const updateData: Prisma.UserUncheckedUpdateInput = { ...rest };
     if (password) updateData.password = await bcrypt.hash(password, 10);
-    if (warehouseId !== undefined) (updateData as Record<string, unknown>).warehouseId = warehouseId ?? null;
-    return this.prisma.user.update({
-      where: { id },
-      data: updateData,
-      select: USER_SELECT,
+    if (warehouseId !== undefined) updateData.warehouseId = warehouseId;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (target.role === Role.admin && target.active && (deactivates || demotesAdmin)) {
+        await tx.$queryRaw`SELECT id FROM users WHERE role = 'admin' AND active = true FOR UPDATE`;
+        const otherAdmins = await tx.user.count({ where: { role: Role.admin, active: true, id: { not: id } } });
+        if (otherAdmins === 0) {
+          throw new UnprocessableEntityException({
+            error: 'LAST_ADMIN',
+            message: 'Debe quedar al menos un administrador activo',
+          });
+        }
+      }
+
+      if (password || deactivates) {
+        await tx.refreshToken.updateMany({ where: { userId: id, revoked: false }, data: { revoked: true } });
+      }
+
+      return tx.user.update({ where: { id }, data: updateData, select: USER_SELECT });
     });
   }
 }
