@@ -40,6 +40,7 @@ enum MovementType {
   transfer_out
   adjustment_increase
   adjustment_decrease
+  relocation
 }
 
 model Tenant {
@@ -64,6 +65,7 @@ model Tenant {
   roles          TenantRole[]
   invitations    UserInvitation[]
   locations      Location[]
+  locationStock  LocationStock[]
 
   @@map("tenants")
 }
@@ -130,6 +132,7 @@ model Warehouse {
   stockMovements StockMovement[]
   invitations    UserInvitation[]
   locations      Location[]
+  locationStock  LocationStock[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -154,6 +157,7 @@ model Product {
   updatedAt     DateTime @updatedAt
 
   warehouseStock WarehouseStock[]
+  locationStock  LocationStock[]
   stockMovements StockMovement[]
   pickingItems   PickingItem[]
   packingItems   PackingItem[]
@@ -173,6 +177,8 @@ model WarehouseStock {
   minStock    Int    @default(0)
   onHand      Int    @default(0)
   reserved    Int    @default(0)
+  // Units taken off the shelves by picking that have not shipped yet.
+  picked      Int    @default(0)
 
   product   Product   @relation(fields: [productId], references: [id])
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
@@ -199,12 +205,17 @@ model StockMovement {
   notes          String?
   operatorId     String
   operatorName   String
+  // Source (or the only) location involved; toLocationId is the destination of relocations.
+  locationId     String?
+  toLocationId   String?
   createdAt      DateTime     @default(now())
 
-  product   Product   @relation(fields: [productId], references: [id])
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  operator  User      @relation(fields: [operatorId], references: [id])
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  product    Product   @relation(fields: [productId], references: [id])
+  warehouse  Warehouse @relation(fields: [warehouseId], references: [id])
+  operator   User      @relation(fields: [operatorId], references: [id])
+  location   Location? @relation("MovementLocation", fields: [locationId], references: [id], onDelete: SetNull)
+  toLocation Location? @relation("MovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([productId, warehouseId, createdAt(sort: Desc)])
@@ -469,12 +480,37 @@ model Location {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  warehouse Warehouse  @relation(fields: [warehouseId], references: [id])
-  parent    Location?  @relation("LocationTree", fields: [parentId], references: [id])
-  children  Location[] @relation("LocationTree")
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  warehouse     Warehouse       @relation(fields: [warehouseId], references: [id])
+  parent        Location?       @relation("LocationTree", fields: [parentId], references: [id])
+  children      Location[]      @relation("LocationTree")
+  stock         LocationStock[]
+  movementsFrom StockMovement[] @relation("MovementLocation")
+  movementsTo   StockMovement[] @relation("MovementToLocation")
 
   @@unique([warehouseId, code])
   @@index([tenantId, warehouseId, parentId])
   @@map("locations")
+}
+
+// Units of a product stored in a location. WarehouseStock keeps the warehouse totals:
+// onHand = sum of these quantities + picked + stock not assigned to any location.
+model LocationStock {
+  id          String   @id @default(uuid())
+  tenantId    String
+  productId   String
+  warehouseId String
+  locationId  String
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  location  Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId])
+  @@index([tenantId, warehouseId, productId])
+  @@index([locationId])
+  @@map("location_stock")
 }

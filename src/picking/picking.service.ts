@@ -11,7 +11,8 @@ import { UploadsService } from '../uploads/uploads.service';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
-import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
+import { lockWarehouseStock, lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
+import { allocateOutbound, Allocation, putAway, suggestedLocations } from '../stock/location-stock';
 import { OrderTargetStatus } from './dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { PlanLimitsService } from '../tenancy/plan-limits.service';
@@ -123,6 +124,7 @@ export class PickingService {
         });
       }
 
+      const suggestions = await suggestedLocations(tx, data.warehouseId, [...requested.keys()]);
       const products = await tx.product.findMany({ where: { id: { in: [...requested.keys()] } } });
       const productById = new Map(products.map((p) => [p.id, p]));
 
@@ -145,7 +147,7 @@ export class PickingService {
                 productName: product.name,
                 quantity: item.quantity,
                 reservedQuantity: item.quantity,
-                location: stocks.get(item.productId)!.location,
+                location: suggestions.get(item.productId) ?? stocks.get(item.productId)!.location,
                 barcode: product.barcode ?? '',
                 unit: product.unit,
               };
@@ -193,6 +195,7 @@ export class PickingService {
       }
 
       if (status === OrderStatus.cancelled) {
+        await this.releasePicked(tx, order);
         await this.settleReservations(tx, order, () => 0);
       }
 
@@ -223,7 +226,7 @@ export class PickingService {
     });
   }
 
-  async updateItem(orderId: string, itemId: string, pickedQuantity: number, user: AuthUser) {
+  async updateItem(orderId: string, itemId: string, pickedQuantity: number, user: AuthUser, locationId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, user);
       this.assertEditable(order);
@@ -236,6 +239,9 @@ export class PickingService {
           message: 'La cantidad recogida no puede superar la cantidad solicitada',
         });
       }
+
+      const delta = pickedQuantity - item.pickedQuantity;
+      if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId);
 
       const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
       await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
@@ -297,6 +303,7 @@ export class PickingService {
           message: 'Solo se pueden eliminar órdenes en estado pending',
         });
       }
+      await this.releasePicked(tx, order);
       await this.settleReservations(tx, order, () => 0);
       return tx.pickingOrder.delete({ where: { id } });
     });
@@ -308,6 +315,64 @@ export class PickingService {
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
     assertWarehouseAccess(user, order.warehouseId);
     return order;
+  }
+
+  // Picked units leave their location (or return to it) and are counted in WarehouseStock.picked until shipped.
+  private async movePickedUnits(
+    tx: Prisma.TransactionClient,
+    order: LockedPickingOrder,
+    item: PickingItem,
+    delta: number,
+    user: AuthUser,
+    locationId?: string,
+  ) {
+    const stock = await lockWarehouseStock(tx, item.productId, order.warehouseId);
+    if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
+
+    let allocations: Allocation[];
+    if (delta > 0) {
+      allocations = await allocateOutbound(tx, stock, delta, locationId);
+    } else {
+      if (locationId) await putAway(tx, stock, locationId, -delta);
+      allocations = [{ locationId: locationId ?? null, quantity: -delta }];
+    }
+    await tx.warehouseStock.update({ where: { id: stock.id }, data: { picked: stock.picked + delta } });
+
+    for (const allocation of allocations.filter((a) => a.locationId)) {
+      await tx.stockMovement.create({
+        data: {
+          tenantId: requireTenantId(),
+          productId: item.productId,
+          warehouseId: order.warehouseId,
+          type: 'relocation',
+          quantity: allocation.quantity,
+          onHandBefore: stock.onHand,
+          onHandAfter: stock.onHand,
+          reservedBefore: stock.reserved,
+          reservedAfter: stock.reserved,
+          referenceType: 'picking',
+          referenceId: order.id,
+          notes: `${delta > 0 ? 'Recogido' : 'Devuelto'} en picking ${order.reference}`,
+          operatorId: user.id,
+          operatorName: user.name,
+          ...(delta > 0 ? { locationId: allocation.locationId } : { toLocationId: allocation.locationId }),
+        },
+      });
+    }
+  }
+
+  // Units picked for an order that will not ship stay in the warehouse without a location.
+  private async releasePicked(tx: Prisma.TransactionClient, order: LockedPickingOrder) {
+    const picked = sumByProduct(order.items, (item) => item.pickedQuantity);
+    const stocks = await lockWarehouseStocks(tx, order.warehouseId, [...picked.keys()]);
+    for (const [productId, quantity] of picked) {
+      const stock = stocks.get(productId);
+      if (!stock || quantity === 0) continue;
+      await tx.warehouseStock.update({
+        where: { id: stock.id },
+        data: { picked: Math.max(0, stock.picked - quantity) },
+      });
+    }
   }
 
   private assertEditable(order: PickingOrder) {

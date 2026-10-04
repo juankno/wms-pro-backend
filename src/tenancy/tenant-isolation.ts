@@ -14,6 +14,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'tenantRole',
   'userInvitation',
   'location',
+  'locationStock',
 ]);
 
 const FILTERED_OPERATIONS = new Set([

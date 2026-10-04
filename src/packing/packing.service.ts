@@ -308,9 +308,11 @@ export class PackingService {
   private async consumeReservations(tx: Prisma.TransactionClient, order: LockedPackingOrder, user: AuthUser) {
     const reserved = sumByProduct(order.pickingItems, (i) => i.reservedQuantity);
     const shipped = sumByProduct(order.items, (i) => i.packedQuantity);
-    const stocks = await lockWarehouseStocks(tx, order.warehouseId, [...reserved.keys(), ...shipped.keys()]);
+    const picked = sumByProduct(order.pickingItems, (i) => i.pickedQuantity);
+    const productIds = [...reserved.keys(), ...shipped.keys(), ...picked.keys()];
+    const stocks = await lockWarehouseStocks(tx, order.warehouseId, productIds);
 
-    for (const productId of new Set([...reserved.keys(), ...shipped.keys()])) {
+    for (const productId of new Set(productIds)) {
       const stock = stocks.get(productId);
       if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
 
@@ -328,7 +330,12 @@ export class PackingService {
 
       await tx.warehouseStock.update({
         where: { id: stock.id },
-        data: { onHand: fisicoDespues, reserved: reservadoDespues },
+        // Every picked unit leaves `picked`: shipped ones are gone and the rest stay without a location.
+        data: {
+          onHand: fisicoDespues,
+          reserved: reservadoDespues,
+          picked: Math.max(0, stock.picked - (picked.get(productId) ?? 0)),
+        },
       });
 
       if (quantity > 0) {
