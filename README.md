@@ -73,6 +73,22 @@ El servidor corre en `http://localhost:3000` por defecto.
 
 ---
 
+## Docker
+
+```bash
+# .env junto a docker-compose.yml (no se versiona)
+POSTGRES_PASSWORD=...                      # contraseña de la base
+JWT_SECRET=$(openssl rand -base64 48)      # mínimo 32 caracteres en producción
+JWT_REFRESH_SECRET=$(openssl rand -base64 48)
+CORS_ORIGINS=https://app.ejemplo.com
+
+docker compose up --build
+```
+
+- `migrate` aplica las migraciones una sola vez y la API arranca cuando termina con éxito.
+- La imagen corre como usuario sin privilegios, expone `HEALTHCHECK` sobre `/health` y guarda las fotos en el volumen `uploads`.
+- El CI construye ambas imágenes y hace una prueba de humo del contenedor en cada PR.
+
 ## Documentación
 
 | URL | Descripción |

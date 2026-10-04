@@ -53,3 +53,38 @@ jobs:
           diff-cover coverage/cobertura-coverage.xml \
             --compare-branch "origin/${{ github.base_ref }}" \
             --fail-under 80
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: false
+          tags: wms-pro-backend:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrate
+          push: false
+          cache-from: type=gha
+      - name: Smoke test the API container
+        run: |
+          docker network create wms
+          docker run -d --name db --network wms -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wms_pro postgres:16-alpine
+          until docker exec db pg_isready -U postgres; do sleep 2; done
+          docker build --target migrate -t wms-pro-backend:migrate .
+          docker run --rm --network wms -e DATABASE_URL=postgresql://postgres:postgres@db:5432/wms_pro wms-pro-backend:migrate
+          docker run -d --name api --network wms -p 3000:3000             -e DATABASE_URL=postgresql://postgres:postgres@db:5432/wms_pro             -e JWT_SECRET=$(openssl rand -hex 32) -e JWT_REFRESH_SECRET=$(openssl rand -hex 32)             wms-pro-backend:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:3000/health && exit 0; sleep 2; done
+          docker logs api
+          exit 1
