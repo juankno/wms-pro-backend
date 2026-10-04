@@ -87,7 +87,7 @@ export class PackingService {
     user: AuthUser,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${data.pickingOrderId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${data.pickingOrderId} AND "tenantId" = ${requireTenantId()} FOR UPDATE`;
       const picking = await tx.pickingOrder.findUnique({
         where: { id: data.pickingOrderId },
         include: { items: true, packingOrder: true },
@@ -284,7 +284,7 @@ export class PackingService {
   }
 
   private async lockOrder(tx: Prisma.TransactionClient, id: string, user: AuthUser): Promise<LockedPackingOrder> {
-    await tx.$queryRaw`SELECT id FROM packing_orders WHERE id = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM packing_orders WHERE id = ${id} AND "tenantId" = ${requireTenantId()} FOR UPDATE`;
     const order = await tx.packingOrder.findUnique({
       where: { id },
       include: { items: true, pickingOrder: { include: { items: true } } },

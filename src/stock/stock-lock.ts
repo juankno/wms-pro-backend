@@ -1,4 +1,5 @@
 import { Prisma, WarehouseStock } from '@prisma/client';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export async function lockWarehouseStock(
   tx: Prisma.TransactionClient,
@@ -7,7 +8,7 @@ export async function lockWarehouseStock(
 ): Promise<WarehouseStock | null> {
   const rows = await tx.$queryRaw<WarehouseStock[]>`
     SELECT * FROM warehouse_stock
-    WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId}
+    WHERE "tenantId" = ${requireTenantId()} AND "productId" = ${productId} AND "warehouseId" = ${warehouseId}
     FOR UPDATE`;
   return rows[0] ?? null;
 }

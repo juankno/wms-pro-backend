@@ -60,6 +60,7 @@ model Tenant {
   pickingOrders  PickingOrder[]
   packingOrders  PackingOrder[]
   activityLogs   ActivityLog[]
+  auditLogs      AuditLog[]
 
   @@map("tenants")
 }
@@ -332,4 +333,26 @@ model ActivityLog {
   @@index([tenantId, timestamp(sort: Desc)])
   @@index([orderId, orderType])
   @@map("activity_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  actorId    String
+  actorName  String
+  action     String
+  resource   String
+  resourceId String?
+  route      String
+  statusCode Int
+  payload    Json?
+  requestId  String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, resource, resourceId])
+  @@map("audit_logs")
 }

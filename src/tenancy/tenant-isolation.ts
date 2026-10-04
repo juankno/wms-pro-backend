@@ -10,6 +10,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'pickingOrder',
   'packingOrder',
   'activityLog',
+  'auditLog',
 ]);
 
 const FILTERED_OPERATIONS = new Set([

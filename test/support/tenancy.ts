@@ -17,6 +17,7 @@ export function createTestTenant(prisma: PrismaService) {
 export async function deleteTestTenant(prisma: PrismaService, tenantId: string) {
   await prisma.$transaction([
     prisma.activityLog.deleteMany({ where: { tenantId } }),
+    prisma.auditLog.deleteMany({ where: { tenantId } }),
     prisma.packingOrder.deleteMany({ where: { tenantId } }),
     prisma.pickingOrder.deleteMany({ where: { tenantId } }),
     prisma.stockMovement.deleteMany({ where: { tenantId } }),
