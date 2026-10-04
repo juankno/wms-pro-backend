@@ -127,11 +127,11 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [x] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
 - [x] 1.2 Aislamiento por tenant en el cliente de Prisma (backend #12). RLS diferido a la Fase 8 (D11).
 - [x] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
-- [ ] 1.4 Roles y permisos configurables por tenant (reemplazan el enum fijo) e invitación de usuarios por correo.
-- [ ] 1.5 Consola de super-admin de la plataforma: crear, suspender y entrar como soporte a un tenant, y métricas de uso.
-- [ ] 1.6 Auditoría general (interceptor), por tenant.
-- [ ] 1.7 Almacenamiento S3-compatible con prefijo por tenant.
-- [ ] 1.8 Límites por plan (usuarios, bodegas, operaciones al mes).
+- [x] 1.4 Roles y permisos configurables por tenant (reemplazan el enum fijo) e invitación de usuarios por correo. Backend #17 y #18, móvil #5; UI web en curso.
+- [x] 1.5 Consola de super-admin de la plataforma: crear, suspender y entrar como soporte a un tenant, y métricas de uso. API en backend #16 y #19 (sesión de soporte de 30 min y auditoría de la plataforma); falta la UI.
+- [x] 1.6 Auditoría general (interceptor), por tenant. Backend #13.
+- [x] 1.7 Almacenamiento S3-compatible con prefijo por tenant. Backend #14.
+- [x] 1.8 Límites por plan (usuarios, bodegas, operaciones al mes). Backend #15.
 
 ### Fase 2 — Datos maestros configurables (3 semanas)
 - [ ] 2.1 Ubicaciones jerárquicas (bodega → zona → pasillo → estante → nivel → posición) con tipo y capacidad.
@@ -185,13 +185,14 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ## 6. Estado actual
 
-- **Fase 0 completa** (pendiente de merge). Queda abierto B17 (uploads en disco local, se resuelve en la tarea 1.7).
-- **Fase 1 en curso:** 1.0 a 1.3 hechas (pendientes de merge).
+- **Fase 0 completa** (pendiente de merge). B17 quedó resuelto con la tarea 1.7.
+- **Fase 1:** API completa (pendiente de merge). Faltan la UI web de roles, invitaciones, auditoría y uso del plan (en curso) y la UI de la consola de plataforma.
 - **Mergeados:** backend #1–#6.
 - **PRs abiertos, con CI en verde (mergear en orden por repo):**
-  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa).
+  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte).
   - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login).
-  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login).
-- **Despliegue coordinado:** backend #11 con web #4 y móvil #3, y backend #12 con web #5 y móvil #4.
-- **Siguiente tarea:** 1.6 (auditoría), 1.7 (almacenamiento S3), 1.8 (límites por plan), 1.5 (consola de plataforma), 1.4 (roles configurables).
+  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos).
+- **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con móvil #5 y la UI web de permisos.
+- **Variables nuevas:** `STORAGE_DRIVER`/`S3_*` (#14), `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL` (#18). Ver `.env.example`.
+- **Siguiente tarea:** UI web de la consola de plataforma y luego Fase 2 (2.1 ubicaciones jerárquicas).
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
