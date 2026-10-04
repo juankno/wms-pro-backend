@@ -59,7 +59,7 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 
 **Backend**
 
-- [ ] B1. (Pendiente solo en warehouses) Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
+- [x] B1. Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
 - [x] B2. `stock.service.ts`: el tipo de movimiento manual no está restringido; `salida_picking` o `entrada_devolucion` se pueden registrar a mano.
 - [x] B3. `stock.controller.ts` no tiene `RolesGuard` ni comprueba la bodega del usuario: cualquier operario ajusta o traslada en cualquier bodega. Lo mismo pasa con `?warehouseId=` en picking, packing, reportes, `users/warehouse/:id` y `activity/order/:id`.
 - [x] B4. Un traslado no valida origen ≠ destino ni que el destino exista; con origen = destino crea o destruye stock.
@@ -71,8 +71,8 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 - [x] B10. No se detecta la reutilización de refresh tokens, que además se guardan en texto plano.
 - [x] B11. `ThrottlerModule` está configurado pero no hay `ThrottlerGuard` global.
 - [x] B12. `/health` responde 200 aunque la BD esté caída.
-- [ ] B13. `products.service.ts`: el filtro `stockStatus` se aplica después de paginar, así que el `total` sale mal.
-- [ ] B14. `reports.service.ts` carga tablas enteras en memoria.
+- [x] B13. `products.service.ts`: el filtro `stockStatus` se aplica después de paginar, así que el `total` sale mal.
+- [x] B14. `reports.service.ts` carga tablas enteras en memoria.
 - [x] B15. `UpdateUserDto.active` no tiene `@IsBoolean`, y un admin puede desactivarse a sí mismo o dejar el sistema sin admin.
 - [x] B16. Swagger documenta `traslado_entrada/salida`, pero el enum real es `entrada_traslado/salida_traslado`.
 - [ ] B17. Uploads solo en disco local, sin procesar imágenes ni limpiar huérfanos.
@@ -111,18 +111,18 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión vendible = fases 0, 1, 2, 3, 4 y 6 + cobro básico (≈ 4–5 meses).**
 
 ### Fase 0 — Estabilización (1–2 semanas)
-- [ ] 0.1 (Falta warehouses) Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
+- [x] 0.1 Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
 - [x] 0.2 Backend: guards de rol y de alcance por bodega (B3).
 - [x] 0.3 Backend: stock atómico, `CHECK >= 0`, validaciones de traslado, reservas correctas en picking y packing, log dentro de la transacción (B4–B8).
 - [x] 0.4 Backend: seguridad y plataforma: secretos, throttler, health 503, refresh tokens hasheados con detección de reutilización, `/auth/me` (B9–B12, B19).
-- [ ] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
+- [x] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
 - [x] 0.6 Backend: suite de tests (unitarios + e2e del flujo reserva → picking → packing → descuento) y CI (B21).
 - [ ] 0.7 Frontend: F1–F6.
 - [ ] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
 - [ ] 0.9 Docker y CI en los tres repos (B20, F7, M12).
 
 ### Fase 1 — Base SaaS (3–4 semanas)
-- [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1.
+- [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1. `MovementType` ya se renombró en la Fase 0 (backend #6, web #1).
 - [ ] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
 - [ ] 1.2 Extensión de Prisma que inyecte `tenantId` y políticas RLS en PostgreSQL.
 - [ ] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
@@ -184,8 +184,8 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ## 6. Estado actual
 
-- **Fase en curso:** Fase 0.
-- **PRs abiertos (apilados, mergear en orden):** #1 (este plan) → #2 stock → #3 ESLint/CI → #4 picking/packing → #5 auth.
-- **Hecho en el backend:** validación y alcance por almacén en stock, picking, packing y usuarios; bloqueo de filas y ciclo de reservas; CHECK en BD; auth endurecida (refresh tokens con hash y detección de reutilización, `/auth/me`, rate limiting, health 503); ESLint, Vitest y CI.
-- **Siguiente tarea:** 0.1 (DTOs de warehouses) y 0.5 (paginación de productos y reportes en SQL). Después 0.7 (web) y 0.8 (móvil).
+- **Fase en curso:** Fase 0. Backend completo salvo 0.9 (Docker).
+- **Mergeados:** backend #1–#5.
+- **Pendientes de merge (desplegar juntos):** backend #6 (MovementType en inglés, reportes en SQL, contratos de listados) y web #1 (tipos en inglés, rutas de movimientos).
+- **Siguiente tarea:** 0.7 (web: F2–F7) y 0.8 (móvil: M1–M12). Después 0.9 (Docker y CI de web y móvil).
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
