@@ -270,9 +270,9 @@ Authorization: Bearer eyJ...
 CREAR PICKING  → valida stockDisponible >= quantity (409 si falla)
 RECOGER ÍTEM   → delta = nuevaQty - anteriorQty → stockReservado += delta
 DESMARCAR ÍTEM → stockReservado -= delta (libera reserva)
-CANCELAR PICKING → stockReservado -= pickedQuantity + genera entrada_devolucion
+CANCELAR PICKING → stockReservado -= pickedQuantity + genera customer_return
 COMPLETAR PACKING → stockFisico -= packedQty, stockReservado -= packedQty
-                    + genera salida_picking (transacción atómica)
+                    + genera order_shipment (transacción atómica)
 ```
 
 ### Invariantes de stock

@@ -29,3 +29,10 @@ export function scopeWarehouseFilter(user: AuthUser, requested?: string): string
   if (user.role === Role.admin) return requested;
   return resolveWarehouseId(user, requested);
 }
+
+// Warehouse whose stock is shown next to catalog data; admins without one see the catalog only.
+export function stockWarehouseFor(user: AuthUser, requested?: string): string | undefined {
+  if (!requested) return user.warehouseId ?? undefined;
+  assertWarehouseAccess(user, requested);
+  return requested;
+}

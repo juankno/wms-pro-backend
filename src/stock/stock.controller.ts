@@ -25,7 +25,7 @@ const MOVEMENT_EXAMPLE = {
   productName: 'Filtro de Aceite CAT 1R-0716',
   warehouseId: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec',
   warehouseName: 'Bogotá',
-  type: 'entrada_compra',
+  type: 'purchase_receipt',
   quantity: 50,
   stockFisicoAntes: 0,
   stockFisicoDespues: 50,
@@ -60,15 +60,15 @@ export class StockController {
 Los movimientos son **inmutables** — nunca se editan ni eliminan.
 
 **Tipos de movimiento:**
-- \`entrada_compra\` — ingreso por compra
-- \`entrada_devolucion\` — devolución de orden cancelada
-- \`salida_picking\` — descuento al completar packing
-- \`ajuste_positivo\` / \`ajuste_negativo\` — ajustes manuales de inventario
-- \`entrada_traslado\` / \`salida_traslado\` — traslados entre almacenes
+- \`purchase_receipt\` — ingreso por compra
+- \`customer_return\` — devolución de orden cancelada
+- \`order_shipment\` — descuento al completar packing
+- \`adjustment_increase\` / \`adjustment_decrease\` — ajustes manuales de inventario
+- \`transfer_in\` / \`transfer_out\` — traslados entre almacenes
 
 **Ejemplo de llamada:**
 \`\`\`http
-GET /v1/stock/movements?type=salida_picking&dateFrom=2025-01-01&page=1&limit=50
+GET /v1/stock/movements?type=order_shipment&dateFrom=2025-01-01&page=1&limit=50
 Authorization: Bearer eyJ...
 \`\`\``,
   })
@@ -107,7 +107,7 @@ Authorization: Bearer eyJ...
 
 **Ejemplo de llamada:**
 \`\`\`http
-GET /v1/products/p001/movements?type=salida_picking&page=1&limit=20
+GET /v1/products/p001/movements?type=order_shipment&page=1&limit=20
 Authorization: Bearer eyJ...
 \`\`\``,
   })
@@ -149,12 +149,12 @@ Authorization: Bearer eyJ...
 Requiere rol **supervisor** o superior y acceso al almacén.
 
 **Tipos permitidos para registro manual:**
-- \`inventario_inicial\` — carga inicial de inventario
-- \`entrada_compra\` — ingreso de mercancía
-- \`ajuste_positivo\` — corrección positiva de inventario
-- \`ajuste_negativo\` — corrección negativa de inventario
+- \`opening_balance\` — carga inicial de inventario
+- \`purchase_receipt\` — ingreso de mercancía
+- \`adjustment_increase\` — corrección positiva de inventario
+- \`adjustment_decrease\` — corrección negativa de inventario
 
-Los tipos \`salida_picking\`, \`entrada_traslado\`/\`salida_traslado\` y \`entrada_devolucion\` los genera el sistema automáticamente.
+Los tipos \`order_shipment\`, \`transfer_in\`/\`transfer_out\` y \`customer_return\` los genera el sistema automáticamente.
 
 **Ejemplo de llamada:**
 \`\`\`http
@@ -163,7 +163,7 @@ Authorization: Bearer eyJ...
 Content-Type: application/json
 
 {
-  "type": "entrada_compra",
+  "type": "purchase_receipt",
   "quantity": 50,
   "notes": "Recepción OC-20250601"
 }
@@ -173,7 +173,7 @@ Content-Type: application/json
   @ApiBody({
     schema: {
       example: {
-        type: 'entrada_compra',
+        type: 'purchase_receipt',
         quantity: 50,
         warehouseId: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec',
         notes: 'Recepción OC-20250601',
@@ -229,8 +229,8 @@ Content-Type: application/json
     description: `Mueve una cantidad de un producto de un almacén a otro en una **transacción atómica**.
 
 Genera dos movimientos inmutables:
-- \`salida_traslado\` en el almacén origen
-- \`entrada_traslado\` en el almacén destino
+- \`transfer_out\` en el almacén origen
+- \`transfer_in\` en el almacén destino
 
 Requiere rol **supervisor** o superior y acceso al almacén origen. Origen y destino deben ser distintos (\`400 SAME_WAREHOUSE\`).
 
@@ -268,8 +268,8 @@ Content-Type: application/json
     schema: {
       example: {
         movements: [
-          { ...MOVEMENT_EXAMPLE, type: 'salida_traslado', quantity: 10 },
-          { ...MOVEMENT_EXAMPLE, type: 'entrada_traslado', quantity: 10 },
+          { ...MOVEMENT_EXAMPLE, type: 'transfer_out', quantity: 10 },
+          { ...MOVEMENT_EXAMPLE, type: 'transfer_in', quantity: 10 },
         ],
       },
     },

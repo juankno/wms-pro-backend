@@ -36,8 +36,8 @@ export class PackingService {
     status?: OrderStatus;
     assignedTo?: string;
     search?: string;
-    from?: string;
-    to?: string;
+    dateFrom?: string;
+    dateTo?: string;
     page: number;
     limit: number;
   }) {
@@ -51,10 +51,10 @@ export class PackingService {
         { pickingOrder: { reference: { contains: opts.search, mode: 'insensitive' } } },
       ];
     }
-    if (opts.from || opts.to) {
+    if (opts.dateFrom || opts.dateTo) {
       where.createdAt = {
-        ...(opts.from && { gte: new Date(opts.from) }),
-        ...(opts.to && { lte: new Date(opts.to) }),
+        ...(opts.dateFrom && { gte: new Date(opts.dateFrom) }),
+        ...(opts.dateTo && { lte: new Date(opts.dateTo) }),
       };
     }
 
@@ -220,10 +220,10 @@ export class PackingService {
     return this.prisma.packingOrder.update({ where: { id }, data });
   }
 
-  async addBox(packingOrderId: string, label: string, user: AuthUser) {
+  async addBox(packingOrderId: string, box: { label: string; weight?: number }, user: AuthUser) {
     const order = await this.findById(packingOrderId, user);
     this.assertEditable(order);
-    return this.prisma.packingBox.create({ data: { packingOrderId, label } });
+    return this.prisma.packingBox.create({ data: { packingOrderId, label: box.label, weight: box.weight } });
   }
 
   async sealBox(packingOrderId: string, boxId: string, user: AuthUser) {
@@ -334,7 +334,7 @@ export class PackingService {
           data: {
             productId,
             warehouseId: order.warehouseId,
-            type: 'salida_picking',
+            type: 'order_shipment',
             quantity,
             stockFisicoAntes: stock.stockFisico,
             stockFisicoDespues: fisicoDespues,

@@ -27,14 +27,14 @@ enum Priority {
 }
 
 enum MovementType {
-  inventario_inicial
-  entrada_compra
-  entrada_devolucion
-  entrada_traslado
-  salida_picking
-  salida_traslado
-  ajuste_positivo
-  ajuste_negativo
+  opening_balance
+  purchase_receipt
+  customer_return
+  transfer_in
+  order_shipment
+  transfer_out
+  adjustment_increase
+  adjustment_decrease
 }
 
 model User {

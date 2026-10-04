@@ -68,7 +68,7 @@ async function main() {
     });
     if (p.stock > 0) {
       await prisma.stockMovement.create({
-        data: { productId: product.id, warehouseId: bogota.id, type: MovementType.inventario_inicial, quantity: p.stock, stockFisicoAntes: 0, stockFisicoDespues: p.stock, stockReservadoAntes: 0, stockReservadoDespues: 0, referenceType: 'seed', notes: 'Inventario inicial', operatorId: admin.id, operatorName: admin.name },
+        data: { productId: product.id, warehouseId: bogota.id, type: MovementType.opening_balance, quantity: p.stock, stockFisicoAntes: 0, stockFisicoDespues: p.stock, stockReservadoAntes: 0, stockReservadoDespues: 0, referenceType: 'seed', notes: 'Inventario inicial', operatorId: admin.id, operatorName: admin.name },
       });
     }
     created.push({ id: product.id, code: p.code, name: p.name, stock: p.stock });

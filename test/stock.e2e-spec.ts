@@ -58,7 +58,7 @@ describe('StockService (integration)', () => {
   describe('registerMovement', () => {
     it('increases physical stock and records before/after values', async () => {
       const { movement, stockActual } = await service.registerMovement({
-        productId, warehouseId: warehouseA, type: 'ajuste_positivo', quantity: 3, ...operator,
+        productId, warehouseId: warehouseA, type: 'adjustment_increase', quantity: 3, ...operator,
       });
 
       expect(stockActual.stockFisico).toBe(8);
@@ -67,7 +67,7 @@ describe('StockService (integration)', () => {
 
     it('rejects a negative adjustment above available stock without changing it', async () => {
       await expect(
-        service.registerMovement({ productId, warehouseId: warehouseA, type: 'ajuste_negativo', quantity: 6, ...operator }),
+        service.registerMovement({ productId, warehouseId: warehouseA, type: 'adjustment_decrease', quantity: 6, ...operator }),
       ).rejects.toBeInstanceOf(ConflictException);
 
       expect((await stockOf(warehouseA))?.stockFisico).toBe(5);
@@ -76,7 +76,7 @@ describe('StockService (integration)', () => {
     it('never oversells under concurrent negative adjustments', async () => {
       const results = await Promise.allSettled(
         Array.from({ length: 10 }, () =>
-          service.registerMovement({ productId, warehouseId: warehouseA, type: 'ajuste_negativo', quantity: 1, ...operator }),
+          service.registerMovement({ productId, warehouseId: warehouseA, type: 'adjustment_decrease', quantity: 1, ...operator }),
         ),
       );
 
@@ -99,7 +99,7 @@ describe('StockService (integration)', () => {
 
       expect((await stockOf(warehouseA))?.stockFisico).toBe(3);
       expect((await stockOf(warehouseB))?.stockFisico).toBe(2);
-      expect(movements.map((m) => m.type)).toEqual(['salida_traslado', 'entrada_traslado']);
+      expect(movements.map((m) => m.type)).toEqual(['transfer_out', 'transfer_in']);
     });
 
     it('preserves total stock under concurrent opposite transfers', async () => {

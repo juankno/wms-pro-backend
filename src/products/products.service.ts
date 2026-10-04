@@ -1,7 +1,8 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -9,6 +10,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { Prisma, WarehouseStock } from '@prisma/client';
+import { STOCK_STATUS_CONDITION, StockStatus } from '../stock/stock-status';
 
 @Injectable()
 export class ProductsService {
@@ -17,9 +19,8 @@ export class ProductsService {
     private uploads: UploadsService,
   ) {}
 
-  async findAll(query: ProductQueryDto, defaultWarehouseId: string) {
-    const { search, category, stockStatus, warehouseId, page, limit } = query;
-    const wId = warehouseId ?? defaultWarehouseId;
+  async findAll(query: ProductQueryDto, warehouseId: string | undefined) {
+    const { search, category, stockStatus, page, limit } = query;
 
     const where: Prisma.ProductWhereInput = { active: true };
     if (search) {
@@ -32,34 +33,34 @@ export class ProductsService {
       ];
     }
     if (category) where.category = { equals: category, mode: 'insensitive' };
+    if (stockStatus) where.AND = [await this.stockStatusFilter(stockStatus, warehouseId)];
 
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        include: { warehouseStock: { where: { warehouseId: wId } } },
+        include: { warehouseStock: warehouseId ? { where: { warehouseId } } : false },
         orderBy: { name: 'asc' },
         ...paginate(page, limit),
       }),
       this.prisma.product.count({ where }),
     ]);
 
-    let data = products.map((p) => this.attachStock(p, wId));
-
-    if (stockStatus) {
-      data = data.filter((p) => {
-        const ws = p.warehouseStock;
-        if (!ws) return stockStatus === 'out';
-        const avail = ws.stockDisponible;
-        if (stockStatus === 'out') return avail === 0;
-        if (stockStatus === 'low') return avail > 0 && avail <= ws.minStock;
-        return avail > ws.minStock;
-      });
-    }
-
-    return { data, meta: buildMeta(total, page, limit) };
+    return { data: products.map((p) => this.attachStock(p, warehouseId)), meta: buildMeta(total, page, limit) };
   }
 
-  async findById(id: string, warehouseId: string) {
+  // Products with no stock row in the warehouse count as out of stock.
+  private async stockStatusFilter(status: StockStatus, warehouseId: string | undefined): Promise<Prisma.ProductWhereInput> {
+    if (!warehouseId) {
+      throw new BadRequestException({ error: 'WAREHOUSE_REQUIRED', message: 'Debes indicar el almacén para filtrar por estado de stock' });
+    }
+    const condition = status === 'out' ? Prisma.sql`NOT (${STOCK_STATUS_CONDITION.out})` : STOCK_STATUS_CONDITION[status];
+    const rows = await this.prisma.$queryRaw<{ productId: string }[]>`
+      SELECT "productId" FROM warehouse_stock WHERE "warehouseId" = ${warehouseId} AND ${condition}`;
+    const ids = rows.map((r) => r.productId);
+    return status === 'out' ? { id: { notIn: ids } } : { id: { in: ids } };
+  }
+
+  async findById(id: string, warehouseId: string | undefined) {
     const product = await this.prisma.product.findFirst({
       where: { id, active: true },
       include: {
@@ -71,7 +72,7 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
 
-    const userWs = product.warehouseStock.find((ws) => ws.warehouseId === warehouseId) ?? null;
+    const userWs = warehouseId ? (product.warehouseStock.find((ws) => ws.warehouseId === warehouseId) ?? null) : null;
     const { warehouseStock, ...rest } = product;
 
     return {
@@ -97,10 +98,10 @@ export class ProductsService {
     };
   }
 
-  async findByBarcode(barcode: string, warehouseId: string) {
+  async findByBarcode(barcode: string, warehouseId: string | undefined) {
     const product = await this.prisma.product.findFirst({
       where: { barcode, active: true },
-      include: { warehouseStock: { where: { warehouseId } } },
+      include: { warehouseStock: warehouseId ? { where: { warehouseId } } : false },
     });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
     return this.attachStock(product, warehouseId);
@@ -152,7 +153,7 @@ export class ProductsService {
     return updated;
   }
 
-  private attachStock<T extends { warehouseStock?: WarehouseStock[] }>(product: T, warehouseId: string) {
+  private attachStock<T extends { warehouseStock?: WarehouseStock[] }>(product: T, warehouseId: string | undefined) {
     const { warehouseStock, ...rest } = product;
     const ws = warehouseStock?.[0] ?? null;
     return {

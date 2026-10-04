@@ -34,16 +34,18 @@ export class PickingService {
   async findAll(opts: {
     warehouseId?: string;
     status?: OrderStatus;
+    priority?: Priority;
     assignedTo?: string;
     search?: string;
-    from?: string;
-    to?: string;
+    dateFrom?: string;
+    dateTo?: string;
     page: number;
     limit: number;
   }) {
     const where: Prisma.PickingOrderWhereInput = {};
     if (opts.warehouseId) where.warehouseId = opts.warehouseId;
     if (opts.status) where.status = opts.status;
+    if (opts.priority) where.priority = opts.priority;
     if (opts.assignedTo) where.assignedToId = opts.assignedTo;
     if (opts.search) {
       where.OR = [
@@ -51,10 +53,10 @@ export class PickingService {
         { client: { contains: opts.search, mode: 'insensitive' } },
       ];
     }
-    if (opts.from || opts.to) {
+    if (opts.dateFrom || opts.dateTo) {
       where.createdAt = {
-        ...(opts.from && { gte: new Date(opts.from) }),
-        ...(opts.to && { lte: new Date(opts.to) }),
+        ...(opts.dateFrom && { gte: new Date(opts.dateFrom) }),
+        ...(opts.dateTo && { lte: new Date(opts.dateTo) }),
       };
     }
 

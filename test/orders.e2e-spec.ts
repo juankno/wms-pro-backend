@@ -162,6 +162,18 @@ describe('Picking and packing reservations (integration)', () => {
       expect((await stockOf(productB)).stockReservado).toBe(0);
     });
 
+    it('filters the listing by priority', async () => {
+      const urgent = await picking.create(
+        { reference: ref(), client: 'Client', warehouseId, priority: 'high', items: [{ productId: productA, quantity: 1 }] },
+        admin,
+      );
+      await newPicking([{ productId: productA, quantity: 1 }]);
+
+      const { data } = await picking.findAll({ warehouseId, priority: 'high', page: 1, limit: 20 });
+
+      expect(data.map((o) => o.id)).toEqual([urgent.id]);
+    });
+
     it('hides orders from users of other warehouses', async () => {
       const order = await newPicking([{ productId: productA, quantity: 1 }]);
 
@@ -189,7 +201,7 @@ describe('Picking and packing reservations (integration)', () => {
 
       const movements = await prisma.stockMovement.findMany({ where: { productId: productA } });
       expect(movements).toHaveLength(1);
-      expect(movements[0]).toMatchObject({ type: 'salida_picking', quantity: 2, stockFisicoAntes: 10, stockFisicoDespues: 8 });
+      expect(movements[0]).toMatchObject({ type: 'order_shipment', quantity: 2, stockFisicoAntes: 10, stockFisicoDespues: 8 });
     });
 
     it('refuses to complete a packing with nothing packed', async () => {
