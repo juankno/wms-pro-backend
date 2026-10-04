@@ -25,6 +25,7 @@ import { RolesModule } from './roles/roles.module';
 import { MailModule } from './mail/mail.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { LocationsModule } from './locations/locations.module';
+import { PartnersModule } from './partners/partners.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { LocationsModule } from './locations/locations.module';
     MailModule,
     InvitationsModule,
     LocationsModule,
+    PartnersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

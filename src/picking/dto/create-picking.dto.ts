@@ -22,7 +22,17 @@ class PickingItemDto {
 
 export class CreatePickingDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50) reference!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(200) client!: string;
+  @ApiPropertyOptional({ description: "Required without customerId; defaults to the customer's name" })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  client?: string;
+
+  @ApiPropertyOptional({ description: 'Active partner flagged as customer' })
+  @IsOptional()
+  @IsString()
+  customerId?: string;
 
   @ApiPropertyOptional({ description: "Defaults to the user's warehouse" })
   @IsOptional()

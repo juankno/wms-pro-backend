@@ -66,6 +66,7 @@ model Tenant {
   invitations    UserInvitation[]
   locations      Location[]
   locationStock  LocationStock[]
+  partners       Partner[]
 
   @@map("tenants")
 }
@@ -226,7 +227,9 @@ model PickingOrder {
   id           String      @id @default(uuid())
   tenantId     String
   reference    String
+  // Name shown on the order; a snapshot of the customer's name when customerId is set.
   client       String
+  customerId   String?
   warehouseId  String
   status       OrderStatus @default(pending)
   priority     Priority    @default(medium)
@@ -244,6 +247,7 @@ model PickingOrder {
   createdBy    User          @relation("PickingCreator", fields: [createdById], references: [id])
   items        PickingItem[]
   packingOrder PackingOrder?
+  customer     Partner?      @relation(fields: [customerId], references: [id])
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, reference])
@@ -513,4 +517,32 @@ model LocationStock {
   @@index([tenantId, warehouseId, productId])
   @@index([locationId])
   @@map("location_stock")
+}
+
+// Customer and/or supplier of the tenant; one company can be both.
+model Partner {
+  id          String   @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  taxId       String?
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  contactName String?
+  notes       String?
+  isCustomer  Boolean  @default(false)
+  isSupplier  Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  pickingOrders PickingOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+  @@map("partners")
 }
