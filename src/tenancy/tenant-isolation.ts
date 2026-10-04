@@ -12,6 +12,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'activityLog',
   'auditLog',
   'tenantRole',
+  'userInvitation',
 ]);
 
 const FILTERED_OPERATIONS = new Set([
