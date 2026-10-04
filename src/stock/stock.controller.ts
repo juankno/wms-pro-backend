@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -8,12 +8,15 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { MovementType } from '@prisma/client';
+import { MovementType, Role } from '@prisma/client';
 import { StockService } from './stock.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { assertWarehouseAccess, resolveWarehouseId, scopeWarehouseFilter } from '../common/utils/warehouse-scope';
+import { CreateMovementDto, MovementsQueryDto, TransferDto, UpdateStockSettingsDto } from './dto/create-movement.dto';
 
 const MOVEMENT_EXAMPLE = {
   id: 'mov_001',
@@ -37,13 +40,14 @@ const MOVEMENT_EXAMPLE = {
 };
 
 const ERR_401 = { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado', requestId: 'req_abc123' };
+const ERR_403 = { error: 'WAREHOUSE_FORBIDDEN', message: 'No tienes acceso a este almacén', requestId: 'req_abc123' };
 const ERR_404_PRODUCT = { error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado', requestId: 'req_abc123' };
 const ERR_409_STOCK = { error: 'STOCK_INSUFICIENTE', message: 'Stock disponible insuficiente para la operación', requestId: 'req_abc123' };
 const ERR_422 = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos', details: [{ field: 'quantity', message: 'must be a positive number' }], requestId: 'req_abc123' };
 
 @ApiTags('stock')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller()
 export class StockController {
   constructor(private stockService: StockService) {}
@@ -60,7 +64,7 @@ Los movimientos son **inmutables** — nunca se editan ni eliminan.
 - \`entrada_devolucion\` — devolución de orden cancelada
 - \`salida_picking\` — descuento al completar packing
 - \`ajuste_positivo\` / \`ajuste_negativo\` — ajustes manuales de inventario
-- \`traslado_entrada\` / \`traslado_salida\` — traslados entre almacenes
+- \`entrada_traslado\` / \`salida_traslado\` — traslados entre almacenes
 
 **Ejemplo de llamada:**
 \`\`\`http
@@ -81,11 +85,11 @@ Authorization: Bearer eyJ...
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   findAll(
-    @Query() q: PaginationDto & { warehouseId?: string; type?: MovementType; dateFrom?: string; dateTo?: string },
+    @Query() q: MovementsQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.stockService.findMovements({
-      warehouseId: q.warehouseId ?? user.warehouseId!,
+      warehouseId: scopeWarehouseFilter(user, q.warehouseId),
       type: q.type,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -123,12 +127,12 @@ Authorization: Bearer eyJ...
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
   findByProduct(
     @Param('id') id: string,
-    @Query() q: PaginationDto & { warehouseId?: string; type?: MovementType; dateFrom?: string; dateTo?: string },
+    @Query() q: MovementsQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.stockService.findMovements({
       productId: id,
-      warehouseId: q.warehouseId ?? user.warehouseId!,
+      warehouseId: scopeWarehouseFilter(user, q.warehouseId),
       type: q.type,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -142,12 +146,15 @@ Authorization: Bearer eyJ...
     summary: 'Registrar movimiento manual de stock',
     description: `Registra un ajuste o entrada manual de stock para un producto. El movimiento es **inmutable** una vez creado.
 
+Requiere rol **supervisor** o superior y acceso al almacén.
+
 **Tipos permitidos para registro manual:**
+- \`inventario_inicial\` — carga inicial de inventario
 - \`entrada_compra\` — ingreso de mercancía
 - \`ajuste_positivo\` — corrección positiva de inventario
 - \`ajuste_negativo\` — corrección negativa de inventario
 
-Los tipos \`salida_picking\`, \`traslado_entrada/salida\` y \`entrada_devolucion\` los genera el sistema automáticamente.
+Los tipos \`salida_picking\`, \`entrada_traslado\`/\`salida_traslado\` y \`entrada_devolucion\` los genera el sistema automáticamente.
 
 **Ejemplo de llamada:**
 \`\`\`http
@@ -176,16 +183,18 @@ Content-Type: application/json
   @ApiResponse({ status: 201, description: 'Movimiento registrado', schema: { example: MOVEMENT_EXAMPLE } })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 404, description: 'Producto no encontrado', schema: { example: ERR_404_PRODUCT } })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente o almacén no permitido', schema: { example: ERR_403 } })
   @ApiResponse({ status: 409, description: 'Stock insuficiente (ajuste negativo)', schema: { example: ERR_409_STOCK } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: ERR_422 } })
+  @Roles(Role.supervisor)
   registerMovement(
     @Param('id') productId: string,
-    @Body() body: { type: MovementType; quantity: number; warehouseId?: string; notes?: string },
+    @Body() body: CreateMovementDto,
     @CurrentUser() user: AuthUser,
   ) {
     return this.stockService.registerMovement({
       productId,
-      warehouseId: body.warehouseId ?? user.warehouseId!,
+      warehouseId: resolveWarehouseId(user, body.warehouseId),
       type: body.type,
       quantity: body.quantity,
       notes: body.notes,
@@ -194,14 +203,36 @@ Content-Type: application/json
     });
   }
 
+  @Patch('stock/products/:productId/warehouse/:warehouseId')
+  @ApiOperation({ summary: 'Actualizar configuración de stock por almacén', description: 'Modifica la ubicación física y el stock mínimo de un producto en un almacén específico.' })
+  @ApiParam({ name: 'productId', description: 'ID del producto' })
+  @ApiParam({ name: 'warehouseId', description: 'ID del almacén' })
+  @ApiBody({ schema: { example: { location: 'A-01-03', minStock: 10 } } })
+  @ApiResponse({ status: 200, description: 'Configuración actualizada' })
+  @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente o almacén no permitido', schema: { example: ERR_403 } })
+  @ApiResponse({ status: 404, description: 'Registro de stock no encontrado', schema: { example: ERR_404_PRODUCT } })
+  @Roles(Role.supervisor)
+  updateStockSettings(
+    @Param('productId') productId: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() body: UpdateStockSettingsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    assertWarehouseAccess(user, warehouseId);
+    return this.stockService.updateStockSettings({ productId, warehouseId, ...body });
+  }
+
   @Post('stock/transfer')
   @ApiOperation({
     summary: 'Trasladar stock entre almacenes',
     description: `Mueve una cantidad de un producto de un almacén a otro en una **transacción atómica**.
 
 Genera dos movimientos inmutables:
-- \`traslado_salida\` en el almacén origen
-- \`traslado_entrada\` en el almacén destino
+- \`salida_traslado\` en el almacén origen
+- \`entrada_traslado\` en el almacén destino
+
+Requiere rol **supervisor** o superior y acceso al almacén origen. Origen y destino deben ser distintos (\`400 SAME_WAREHOUSE\`).
 
 Si el stock disponible en origen es insuficiente devuelve \`409 STOCK_INSUFICIENTE\`.
 
@@ -236,19 +267,24 @@ Content-Type: application/json
     description: 'Traslado ejecutado. Devuelve los dos movimientos generados.',
     schema: {
       example: {
-        salida: { ...MOVEMENT_EXAMPLE, type: 'traslado_salida', quantity: 10 },
-        entrada: { ...MOVEMENT_EXAMPLE, type: 'traslado_entrada', quantity: 10 },
+        movements: [
+          { ...MOVEMENT_EXAMPLE, type: 'salida_traslado', quantity: 10 },
+          { ...MOVEMENT_EXAMPLE, type: 'entrada_traslado', quantity: 10 },
+        ],
       },
     },
   })
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente o almacén origen no permitido', schema: { example: ERR_403 } })
   @ApiResponse({ status: 404, description: 'Producto o almacén no encontrado', schema: { example: ERR_404_PRODUCT } })
   @ApiResponse({ status: 409, description: 'Stock insuficiente en almacén origen', schema: { example: ERR_409_STOCK } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: ERR_422 } })
+  @Roles(Role.supervisor)
   transfer(
-    @Body() body: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; notes?: string },
+    @Body() body: TransferDto,
     @CurrentUser() user: AuthUser,
   ) {
+    assertWarehouseAccess(user, body.fromWarehouseId);
     return this.stockService.transfer({ ...body, operatorId: user.id, operatorName: user.name });
   }
 }
