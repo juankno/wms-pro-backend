@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ProductsService } from '../src/products/products.service';
 import { ReportsService } from '../src/reports/reports.service';
+import { StockService } from '../src/stock/stock.service';
 import { UploadsService } from '../src/uploads/uploads.service';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -103,6 +104,20 @@ describe('Product listing and reports (integration)', () => {
 
     expect(data).toHaveLength(1);
     expect(meta).toMatchObject({ total: 2, totalPages: 2 });
+  });
+
+  it('lists distinct categories of active products', async () => {
+    const categories = await products.findCategories();
+
+    expect(categories.filter((c) => c === 'reports')).toEqual(['reports']);
+    expect([...categories].sort()).toEqual(categories);
+  });
+
+  it('includes product and warehouse names in the movement history', async () => {
+    const { data } = await new StockService(prisma).findMovements({ warehouseId, page: 1, limit: 5 });
+
+    expect(data[0].product.name).toContain(suffix);
+    expect(data[0].warehouse.name).toBe('Reports');
   });
 
   it('summarizes stock with the same status rules as the product filter', async () => {
