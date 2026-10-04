@@ -13,6 +13,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'auditLog',
   'tenantRole',
   'userInvitation',
+  'location',
 ]);
 
 const FILTERED_OPERATIONS = new Set([
