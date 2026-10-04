@@ -83,6 +83,13 @@ export class LocationsService {
         message: 'La ubicación tiene ubicaciones internas. Elimínalas o muévelas primero.',
       });
     }
+    const { _sum } = await this.prisma.locationStock.aggregate({ where: { locationId: id }, _sum: { quantity: true } });
+    if ((_sum.quantity ?? 0) > 0) {
+      throw new ConflictException({
+        error: 'LOCATION_HAS_STOCK',
+        message: `La ubicación tiene ${_sum.quantity} unidades. Muévelas antes de eliminarla.`,
+      });
+    }
     await this.prisma.location.delete({ where: { id } });
   }
 

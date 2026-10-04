@@ -16,7 +16,14 @@ import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess, resolveWarehouseId, scopeWarehouseFilter } from '../common/utils/warehouse-scope';
-import { CreateMovementDto, MovementsQueryDto, TransferDto, UpdateStockSettingsDto } from './dto/create-movement.dto';
+import {
+  CreateMovementDto,
+  LocationStockQueryDto,
+  MovementsQueryDto,
+  RelocateDto,
+  TransferDto,
+  UpdateStockSettingsDto,
+} from './dto/create-movement.dto';
 
 const MOVEMENT_EXAMPLE = {
   id: 'mov_001',
@@ -200,7 +207,40 @@ Content-Type: application/json
       notes: body.notes,
       operatorId: user.id,
       operatorName: user.name,
+      locationId: body.locationId,
     });
+  }
+
+  @Get('stock/locations')
+  @ApiOperation({ summary: 'Stock por ubicación', description: 'Filtra por producto o ubicación dentro de un almacén.' })
+  findLocationStock(@Query() query: LocationStockQueryDto, @CurrentUser() user: AuthUser) {
+    assertWarehouseAccess(user, query.warehouseId);
+    return this.stockService.findLocationStock(query);
+  }
+
+  @Get('stock/products/:productId/warehouse/:warehouseId/locations')
+  @ApiOperation({
+    summary: 'Distribución del stock de un producto',
+    description: 'Unidades por ubicación, recogidas pendientes de despacho y sin ubicación.',
+  })
+  productLocations(
+    @Param('productId') productId: string,
+    @Param('warehouseId') warehouseId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    assertWarehouseAccess(user, warehouseId);
+    return this.stockService.productLocations(productId, warehouseId);
+  }
+
+  @Post('stock/relocate')
+  @RequirePermissions('stock.adjust')
+  @ApiOperation({
+    summary: 'Mover stock entre ubicaciones del mismo almacén',
+    description: 'Sin `fromLocationId` toma stock sin ubicación (ubicar); sin `toLocationId` lo deja sin ubicación.',
+  })
+  relocate(@Body() body: RelocateDto, @CurrentUser() user: AuthUser) {
+    assertWarehouseAccess(user, body.warehouseId);
+    return this.stockService.relocate({ ...body, operatorId: user.id, operatorName: user.name });
   }
 
   @Patch('stock/products/:productId/warehouse/:warehouseId')

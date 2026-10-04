@@ -63,6 +63,13 @@ export class UpdatePickingStatusDto {
 
 export class UpdatePickingItemDto {
   @ApiProperty({ minimum: 0 }) @IsInt() @Min(0) pickedQuantity!: number;
+
+  @ApiPropertyOptional({
+    description: 'Location the units come from (or return to when the quantity decreases). Omitted: taken in pick sequence.',
+  })
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }
 
 export class AddPhotoDto {
