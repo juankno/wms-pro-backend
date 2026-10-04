@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AuthService } from '../src/auth/auth.service';
 import { AuthUser } from '../src/common/types/request-with-user.interface';
 import { UsersService } from '../src/users/users.service';
+import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
 process.env.JWT_SECRET ??= 'test-access-secret';
@@ -15,11 +16,11 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 describe('Auth and users (integration)', () => {
   const prisma = testPrisma();
   const jwt = new JwtService({ secret: process.env.JWT_SECRET });
-  const auth = new AuthService(prisma, new UsersService(prisma), jwt);
+  const auth = new AuthService(prisma, new UsersService(prisma, new PlanLimitsService(prisma)), jwt);
   const password = 'correct-horse-1';
   let tenant: Tenant;
   let otherTenant: Tenant;
-  const users = scopedTo(new UsersService(prisma), () => tenant.id);
+  const users = scopedTo(new UsersService(prisma, new PlanLimitsService(prisma)), () => tenant.id);
 
   const createUser = async (role: Role = Role.operator, owner: Tenant = tenant, username = `u-${randomUUID().slice(0, 8)}`) =>
     prisma.user.create({

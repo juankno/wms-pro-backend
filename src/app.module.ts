@@ -19,6 +19,7 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { TenantInterceptor } from './tenancy/tenant.interceptor';
 import { AuditModule } from './audit/audit.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
+import { TenancyModule } from './tenancy/tenancy.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuditInterceptor } from './audit/audit.interceptor';
     NotificationsModule,
     HealthModule,
     AuditModule,
+    TenancyModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -11,7 +11,7 @@ async function main() {
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'default' },
     update: {},
-    create: { id: DEFAULT_TENANT_ID, slug: 'default', name: 'Default' },
+    create: { id: DEFAULT_TENANT_ID, slug: 'default', name: 'Default', plan: 'enterprise' },
   });
   const tenantId = tenant.id;
 
