@@ -4,6 +4,7 @@ import { MovementType, Prisma, WarehouseStock } from '@prisma/client';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { ManualMovementType } from './dto/create-movement.dto';
 import { lockWarehouseStock } from './stock-lock';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 @Injectable()
 export class StockService {
@@ -47,6 +48,7 @@ export class StockService {
 
       const movement = await tx.stockMovement.create({
         data: {
+          tenantId: requireTenantId(),
           productId: opts.productId,
           warehouseId: opts.warehouseId,
           type: opts.type,
@@ -100,8 +102,8 @@ export class StockService {
       if (!origin) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'El producto no existe en el almacén origen' });
 
       await tx.$executeRaw`
-        INSERT INTO warehouse_stock (id, "productId", "warehouseId")
-        VALUES (gen_random_uuid()::text, ${opts.productId}, ${opts.toWarehouseId})
+        INSERT INTO warehouse_stock (id, "tenantId", "productId", "warehouseId")
+        VALUES (gen_random_uuid()::text, ${requireTenantId()}, ${opts.productId}, ${opts.toWarehouseId})
         ON CONFLICT ("productId", "warehouseId") DO NOTHING`;
 
       // Lock in a deterministic order so opposite-direction transfers cannot deadlock.
@@ -129,6 +131,7 @@ export class StockService {
 
       const outMov = await tx.stockMovement.create({
         data: {
+          tenantId: requireTenantId(),
           productId: opts.productId,
           warehouseId: opts.fromWarehouseId,
           type: 'transfer_out',
@@ -145,6 +148,7 @@ export class StockService {
       });
       const inMov = await tx.stockMovement.create({
         data: {
+          tenantId: requireTenantId(),
           productId: opts.productId,
           warehouseId: opts.toWarehouseId,
           type: 'transfer_in',

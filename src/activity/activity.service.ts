@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 @Injectable()
 export class ActivityService {
@@ -19,7 +20,7 @@ export class ActivityService {
     },
     db: Prisma.TransactionClient = this.prisma,
   ) {
-    return db.activityLog.create({ data });
+    return db.activityLog.create({ data: { ...data, tenantId: requireTenantId() } });
   }
 
   async findAll(page: number, limit: number, warehouseId?: string) {

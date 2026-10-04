@@ -1,18 +1,14 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PrismaService } from '../src/prisma/prisma.service';
 import { StockService } from '../src/stock/stock.service';
+import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('TEST_DATABASE_URL must point to a disposable database');
-}
 
 describe('StockService (integration)', () => {
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-  const service = new StockService(prisma as PrismaService);
+  const prisma = testPrisma();
+  let tenantId: string;
+  const service = scopedTo(new StockService(prisma), () => tenantId);
   const operator = { operatorId: '', operatorName: 'Test Operator' };
 
   let productId: string;
@@ -23,9 +19,10 @@ describe('StockService (integration)', () => {
     prisma.warehouseStock.findUnique({ where: { productId_warehouseId: { productId, warehouseId } } });
 
   beforeAll(async () => {
+    tenantId = (await createTestTenant(prisma)).id;
     const suffix = randomUUID().slice(0, 8);
     const user = await prisma.user.create({
-      data: { username: `test-${suffix}`, email: `test-${suffix}@example.com`, name: operator.operatorName, password: 'unused' },
+      data: { tenantId, username: `test-${suffix}`, email: `test-${suffix}@example.com`, name: operator.operatorName, password: 'unused' },
     });
     operator.operatorId = user.id;
   });
@@ -33,14 +30,14 @@ describe('StockService (integration)', () => {
   beforeEach(async () => {
     const suffix = randomUUID().slice(0, 8);
     const [product, a, b] = await Promise.all([
-      prisma.product.create({ data: { code: `TEST-${suffix}`, name: 'Test product', category: 'test' } }),
-      prisma.warehouse.create({ data: { code: `WA-${suffix}`, name: 'Warehouse A' } }),
-      prisma.warehouse.create({ data: { code: `WB-${suffix}`, name: 'Warehouse B' } }),
+      prisma.product.create({ data: { tenantId, code: `TEST-${suffix}`, name: 'Test product', category: 'test' } }),
+      prisma.warehouse.create({ data: { tenantId, code: `WA-${suffix}`, name: 'Warehouse A' } }),
+      prisma.warehouse.create({ data: { tenantId, code: `WB-${suffix}`, name: 'Warehouse B' } }),
     ]);
     productId = product.id;
     warehouseA = a.id;
     warehouseB = b.id;
-    await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseA, onHand: 5 } });
+    await prisma.warehouseStock.create({ data: { tenantId, productId, warehouseId: warehouseA, onHand: 5 } });
   });
 
   afterEach(async () => {
@@ -51,7 +48,7 @@ describe('StockService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: operator.operatorId } });
+    await deleteTestTenant(prisma, tenantId);
     await prisma.$disconnect();
   });
 
@@ -103,7 +100,7 @@ describe('StockService (integration)', () => {
     });
 
     it('preserves total stock under concurrent opposite transfers', async () => {
-      await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseB, onHand: 5 } });
+      await prisma.warehouseStock.create({ data: { tenantId, productId, warehouseId: warehouseB, onHand: 5 } });
 
       const results = await Promise.allSettled(
         Array.from({ length: 6 }, (_, i) =>

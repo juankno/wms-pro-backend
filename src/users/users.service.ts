@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
 import { AuthUser } from '../common/types/request-with-user.interface';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 const USER_SELECT = {
   id: true,
@@ -21,15 +22,15 @@ const USER_SELECT = {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  findByUsername(username: string) {
+  findByUsername(tenantId: string, username: string) {
     return this.prisma.user.findUnique({
-      where: { username },
+      where: { tenantId_username: { tenantId, username } },
       include: { warehouse: true },
     });
   }
 
   findById(id: string) {
-    return this.prisma.user.findUnique({ where: { id } });
+    return this.prisma.user.findUnique({ where: { id }, include: { tenant: true } });
   }
 
   findAll() {
@@ -58,6 +59,7 @@ export class UsersService {
     const { warehouseId, ...rest } = data;
     const createData: Prisma.UserUncheckedCreateInput = {
       ...rest,
+      tenantId: requireTenantId(),
       password: hashed,
       ...(warehouseId ? { warehouseId } : {}),
     };
@@ -95,7 +97,7 @@ export class UsersService {
 
     return this.prisma.$transaction(async (tx) => {
       if (target.role === Role.admin && target.active && (deactivates || demotesAdmin)) {
-        await tx.$queryRaw`SELECT id FROM users WHERE role = 'admin' AND active = true FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM users WHERE "tenantId" = ${requireTenantId()} AND role = 'admin' AND active = true FOR UPDATE`;
         const otherAdmins = await tx.user.count({ where: { role: Role.admin, active: true, id: { not: id } } });
         if (otherAdmins === 0) {
           throw new UnprocessableEntityException({

@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { MovementType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireTenantId } from '../tenancy/tenant-context';
 import {
   INBOUND_MOVEMENT_TYPES,
   OUTBOUND_MOVEMENT_TYPES,
   STOCK_STATUS_CONDITION,
-  warehouseCondition,
+  stockScopeCondition,
 } from '../stock/stock-status';
 
 type DateRange = { gte?: Date; lte?: Date };
@@ -155,7 +156,7 @@ export class ReportsService {
         coalesce(sum(ws."reserved"), 0)::int AS "totalReserved"
       FROM warehouse_stock ws
       JOIN products p ON p.id = ws."productId" AND p.active
-      WHERE ${warehouseCondition(warehouseId)}`;
+      WHERE ${stockScopeCondition(requireTenantId(), warehouseId)}`;
     return row;
   }
 
@@ -165,7 +166,7 @@ export class ReportsService {
              ws."onHand", ws."reserved", ws."minStock", ws.location
       FROM warehouse_stock ws
       JOIN products p ON p.id = ws."productId" AND p.active
-      WHERE ${warehouseCondition(warehouseId)} AND ${condition}
+      WHERE ${stockScopeCondition(requireTenantId(), warehouseId)} AND ${condition}
       ORDER BY (ws."onHand" - ws."reserved"), p.name`;
   }
 

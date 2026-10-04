@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 @Injectable()
 export class WarehousesService {
@@ -16,7 +17,7 @@ export class WarehousesService {
   }
 
   create(data: { name: string; code: string; address?: string }) {
-    return this.prisma.warehouse.create({ data });
+    return this.prisma.warehouse.create({ data: { ...data, tenantId: requireTenantId() } });
   }
 
   async update(id: string, data: Partial<{ name: string; address: string; active: boolean }>) {

@@ -1,21 +1,19 @@
-import { MovementType, PrismaClient } from '@prisma/client';
+import { MovementType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PrismaService } from '../src/prisma/prisma.service';
 import { ProductsService } from '../src/products/products.service';
 import { ReportsService } from '../src/reports/reports.service';
 import { StockService } from '../src/stock/stock.service';
 import { UploadsService } from '../src/uploads/uploads.service';
+import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('TEST_DATABASE_URL must point to a disposable database');
-}
 
 describe('Product listing and reports (integration)', () => {
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } }) as PrismaService;
-  const products = new ProductsService(prisma, {} as UploadsService);
-  const reports = new ReportsService(prisma);
+  const prisma = testPrisma();
+  let tenantId: string;
+  const products = scopedTo(new ProductsService(prisma, {} as UploadsService), () => tenantId);
+  const reports = scopedTo(new ReportsService(prisma), () => tenantId);
+  const stock = scopedTo(new StockService(prisma), () => tenantId);
   const suffix = randomUUID().slice(0, 8);
 
   let warehouseId: string;
@@ -23,10 +21,11 @@ describe('Product listing and reports (integration)', () => {
   const productIds: string[] = [];
 
   beforeAll(async () => {
-    warehouseId = (await prisma.warehouse.create({ data: { code: `RW-${suffix}`, name: 'Reports' } })).id;
+    tenantId = (await createTestTenant(prisma)).id;
+    warehouseId = (await prisma.warehouse.create({ data: { tenantId, code: `RW-${suffix}`, name: 'Reports' } })).id;
     userId = (
       await prisma.user.create({
-        data: { username: `rep-${suffix}`, email: `rep-${suffix}@example.com`, name: 'Reporter', password: 'unused' },
+        data: { tenantId, username: `rep-${suffix}`, email: `rep-${suffix}@example.com`, name: 'Reporter', password: 'unused' },
       })
     ).id;
 
@@ -38,18 +37,18 @@ describe('Product listing and reports (integration)', () => {
     ];
     for (const [i, s] of stock.entries()) {
       const product = await prisma.product.create({
-        data: { code: `R${i}-${suffix}`, name: `${s.name} ${suffix}`, category: 'reports' },
+        data: { tenantId, code: `R${i}-${suffix}`, name: `${s.name} ${suffix}`, category: 'reports' },
       });
       productIds.push(product.id);
       if (s.onHand !== null) {
         await prisma.warehouseStock.create({
-          data: { productId: product.id, warehouseId, onHand: s.onHand, reserved: s.reserved, minStock: s.minStock },
+          data: { tenantId, productId: product.id, warehouseId, onHand: s.onHand, reserved: s.reserved, minStock: s.minStock },
         });
       }
     }
 
     const movement = (type: MovementType, quantity: number) => ({
-      productId: productIds[2], warehouseId, type, quantity, operatorId: userId, operatorName: 'Reporter',
+      tenantId, productId: productIds[2], warehouseId, type, quantity, operatorId: userId, operatorName: 'Reporter',
       onHandBefore: 0, onHandAfter: 0, reservedBefore: 0, reservedAfter: 0,
     });
     await prisma.stockMovement.createMany({
@@ -63,7 +62,7 @@ describe('Product listing and reports (integration)', () => {
     const order = (items: number) =>
       prisma.pickingOrder.create({
         data: {
-          reference: `RP-${randomUUID().slice(0, 8)}`, client: 'Client', warehouseId, createdById: userId,
+          tenantId, reference: `RP-${randomUUID().slice(0, 8)}`, client: 'Client', warehouseId, createdById: userId,
           items: {
             create: Array.from({ length: items }, () => ({
               productId: productIds[2], productCode: 'x', productName: 'x', quantity: 1,
@@ -76,12 +75,7 @@ describe('Product listing and reports (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.pickingOrder.deleteMany({ where: { warehouseId } });
-    await prisma.stockMovement.deleteMany({ where: { warehouseId } });
-    await prisma.warehouseStock.deleteMany({ where: { warehouseId } });
-    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
-    await prisma.user.delete({ where: { id: userId } });
-    await prisma.warehouse.delete({ where: { id: warehouseId } });
+    await deleteTestTenant(prisma, tenantId);
     await prisma.$disconnect();
   });
 
@@ -114,7 +108,7 @@ describe('Product listing and reports (integration)', () => {
   });
 
   it('includes product and warehouse names in the movement history', async () => {
-    const { data } = await new StockService(prisma).findMovements({ warehouseId, page: 1, limit: 5 });
+    const { data } = await stock.findMovements({ warehouseId, page: 1, limit: 5 });
 
     expect(data[0].product.name).toContain(suffix);
     expect(data[0].warehouse.name).toBe('Reports');

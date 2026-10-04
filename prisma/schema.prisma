@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TenantStatus {
+  active
+  suspended
+}
+
 enum Role {
   operator
   supervisor
@@ -37,11 +42,34 @@ enum MovementType {
   adjustment_decrease
 }
 
+model Tenant {
+  id        String       @id @default(uuid())
+  slug      String       @unique
+  name      String
+  status    TenantStatus @default(active)
+  plan      String       @default("trial")
+  settings  Json         @default("{}")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  users          User[]
+  warehouses     Warehouse[]
+  products       Product[]
+  warehouseStock WarehouseStock[]
+  stockMovements StockMovement[]
+  pickingOrders  PickingOrder[]
+  packingOrders  PackingOrder[]
+  activityLogs   ActivityLog[]
+
+  @@map("tenants")
+}
+
 model User {
   id          String   @id @default(uuid())
-  username    String   @unique
+  tenantId    String
+  username    String
   name        String
-  email       String   @unique
+  email       String
   password    String
   role        Role     @default(operator)
   warehouseId String?
@@ -58,7 +86,10 @@ model User {
   createdPacking  PackingOrder[]  @relation("PackingCreator")
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, username])
+  @@unique([tenantId, email])
   @@map("users")
 }
 
@@ -77,8 +108,9 @@ model RefreshToken {
 
 model Warehouse {
   id        String   @id @default(uuid())
+  tenantId  String
   name      String
-  code      String   @unique
+  code      String
   address   String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -89,17 +121,20 @@ model Warehouse {
   pickingOrders  PickingOrder[]
   packingOrders  PackingOrder[]
   stockMovements StockMovement[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, code])
   @@map("warehouses")
 }
 
 model Product {
   id            String   @id @default(uuid())
-  code          String   @unique
+  tenantId      String
+  code          String
   name          String
   description   String   @default("")
   category      String
-  barcode       String?  @unique
+  barcode       String?
   unit          String   @default("UND")
   brand         String?
   compatibility String[] @default([])
@@ -113,12 +148,16 @@ model Product {
   stockMovements StockMovement[]
   pickingItems   PickingItem[]
   packingItems   PackingItem[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, code])
+  @@unique([tenantId, barcode])
   @@map("products")
 }
 
 model WarehouseStock {
   id          String @id @default(uuid())
+  tenantId    String
   productId   String
   warehouseId String
   location    String @default("")
@@ -128,6 +167,7 @@ model WarehouseStock {
 
   product   Product   @relation(fields: [productId], references: [id])
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@unique([productId, warehouseId])
   @@index([productId, warehouseId])
@@ -136,6 +176,7 @@ model WarehouseStock {
 
 model StockMovement {
   id             String       @id @default(uuid())
+  tenantId       String
   productId      String
   warehouseId    String
   type           MovementType
@@ -154,14 +195,17 @@ model StockMovement {
   product   Product   @relation(fields: [productId], references: [id])
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   operator  User      @relation(fields: [operatorId], references: [id])
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
+  @@index([tenantId, createdAt(sort: Desc)])
   @@index([productId, warehouseId, createdAt(sort: Desc)])
   @@map("stock_movements")
 }
 
 model PickingOrder {
   id           String      @id @default(uuid())
-  reference    String      @unique
+  tenantId     String
+  reference    String
   client       String
   warehouseId  String
   status       OrderStatus @default(pending)
@@ -180,7 +224,9 @@ model PickingOrder {
   createdBy    User          @relation("PickingCreator", fields: [createdById], references: [id])
   items        PickingItem[]
   packingOrder PackingOrder?
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, reference])
   @@index([warehouseId, status])
   @@map("picking_orders")
 }
@@ -207,8 +253,9 @@ model PickingItem {
 
 model PackingOrder {
   id             String      @id @default(uuid())
+  tenantId       String
   pickingOrderId String      @unique
-  reference      String      @unique
+  reference      String
   client         String
   warehouseId    String
   status         OrderStatus @default(pending)
@@ -228,7 +275,9 @@ model PackingOrder {
   createdBy    User          @relation("PackingCreator", fields: [createdById], references: [id])
   items        PackingItem[]
   boxes        PackingBox[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, reference])
   @@index([warehouseId, status])
   @@map("packing_orders")
 }
@@ -267,6 +316,7 @@ model PackingBox {
 
 model ActivityLog {
   id          String   @id @default(uuid())
+  tenantId    String
   orderId     String
   orderType   String
   action      String
@@ -276,8 +326,10 @@ model ActivityLog {
   warehouseId String
   timestamp   DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
+  @@index([tenantId, timestamp(sort: Desc)])
   @@index([orderId, orderType])
   @@map("activity_logs")
 }
