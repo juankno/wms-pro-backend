@@ -268,6 +268,7 @@ model PickingOrder {
   createdBy    User          @relation("PickingCreator", fields: [createdById], references: [id])
   items        PickingItem[]
   packingOrder PackingOrder?
+  returns      Receipt[]
   customer     Partner?      @relation(fields: [customerId], references: [id])
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
@@ -567,7 +568,8 @@ model Partner {
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   pickingOrders  PickingOrder[]
   purchaseOrders PurchaseOrder[]
-  receipts       Receipt[]
+  receipts       Receipt[]       @relation("ReceiptSupplier")
+  returns        Receipt[]       @relation("ReceiptCustomer")
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
@@ -704,8 +706,12 @@ enum ReceiptStatus {
 model Receipt {
   id              String        @id @default(uuid())
   tenantId        String
+  kind            ReceiptKind   @default(purchase)
   purchaseOrderId String?
   supplierId      String?
+  // Customer returns: who returns and, optionally, the order being returned.
+  customerId      String?
+  pickingOrderId  String?
   warehouseId     String
   status          ReceiptStatus @default(open)
   notes           String?
@@ -716,7 +722,9 @@ model Receipt {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Partner?       @relation(fields: [supplierId], references: [id])
+  supplier      Partner?       @relation("ReceiptSupplier", fields: [supplierId], references: [id])
+  customer      Partner?       @relation("ReceiptCustomer", fields: [customerId], references: [id])
+  pickingOrder  PickingOrder?  @relation(fields: [pickingOrderId], references: [id])
   warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
   createdBy     User           @relation(fields: [createdById], references: [id])
   lines         ReceiptLine[]
@@ -726,14 +734,15 @@ model Receipt {
 }
 
 model ReceiptLine {
-  id           String    @id @default(uuid())
+  id           String            @id @default(uuid())
   receiptId    String
   productId    String
   quantity     Int
   locationId   String?
   lotCode      String?
   lotExpiresAt DateTime?
-  createdAt    DateTime  @default(now())
+  disposition  ReturnDisposition @default(restock)
+  createdAt    DateTime          @default(now())
 
   receipt  Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   product  Product   @relation(fields: [productId], references: [id])
@@ -776,4 +785,15 @@ model CustomFieldDefinition {
 
   @@unique([tenantId, entity, key])
   @@map("custom_field_definitions")
+}
+
+enum ReceiptKind {
+  purchase
+  customer_return
+}
+
+// What happens to returned units: back to stock, or recorded and discarded.
+enum ReturnDisposition {
+  restock
+  scrap
 }

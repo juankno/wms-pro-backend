@@ -30,7 +30,10 @@ export class ReceiptsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Abrir una recepción contra una orden de compra o sin orden' })
+  @ApiOperation({
+    summary: 'Abrir una recepción de compra (con o sin orden) o una devolución de cliente',
+    description: 'Con `kind: customer_return` usa `pickingOrderId` (pedido despachado) o `customerId` + `warehouseId`.',
+  })
   create(@Body() dto: CreateReceiptDto, @CurrentUser() user: AuthUser) {
     return this.receipts.create(dto, user);
   }
