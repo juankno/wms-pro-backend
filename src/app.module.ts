@@ -29,6 +29,7 @@ import { PartnersModule } from './partners/partners.module';
 import { ImportsModule } from './imports/imports.module';
 import { LotsModule } from './lots/lots.module';
 import { PurchasesModule } from './purchases/purchases.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     ImportsModule,
     LotsModule,
     PurchasesModule,
+    ReceiptsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

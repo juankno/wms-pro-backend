@@ -52,7 +52,7 @@ describe('Custom roles (integration)', () => {
     expect(await permissionsOf(operatorId)).toEqual(['stock.adjust', 'reports.read']);
 
     await users.update(operatorId, { customRoleId: null }, admin);
-    expect(await permissionsOf(operatorId)).toEqual([]);
+    expect(await permissionsOf(operatorId)).toEqual(['receiving.execute']);
   });
 
   it('refuses to delete a role that is assigned', async () => {

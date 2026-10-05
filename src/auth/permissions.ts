@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   'locations.manage': 'Crear y editar ubicaciones de los almacenes',
   'partners.manage': 'Crear y editar clientes y proveedores',
   'purchases.manage': 'Crear, editar, cerrar y cancelar órdenes de compra',
+  'receiving.execute': 'Recibir mercancía en el almacén',
   'warehouses.all': 'Operar en todos los almacenes',
   'audit.read': 'Ver auditoría',
   'tenant.manage': 'Ver plan y uso de la empresa',
@@ -26,7 +27,7 @@ export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  operator: [],
+  operator: ['receiving.execute'],
   supervisor: [
     'products.write',
     'stock.adjust',
@@ -35,6 +36,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'locations.manage',
     'partners.manage',
     'purchases.manage',
+    'receiving.execute',
     'orders.delete',
     'reports.read',
     'users.read',
