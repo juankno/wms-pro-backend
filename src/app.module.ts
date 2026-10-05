@@ -27,6 +27,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { LocationsModule } from './locations/locations.module';
 import { PartnersModule } from './partners/partners.module';
 import { ImportsModule } from './imports/imports.module';
+import { LotsModule } from './lots/lots.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ImportsModule } from './imports/imports.module';
     LocationsModule,
     PartnersModule,
     ImportsModule,
+    LotsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -43,6 +43,13 @@ export function parsePositiveInt(value: string | undefined): number | undefined 
   return number > 0 ? number : undefined;
 }
 
+// Accepts ISO dates (2027-06-30) only, so day and month cannot be swapped by locale.
+export function parseDate(value: string): Date | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? undefined : date;
+}
+
 export function missingColumns(rows: CsvRow[], required: string[]): string[] {
   const present = new Set(Object.keys(rows[0] ?? {}));
   return required.filter((column) => !present.has(column));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectDelimiter, missingColumns, parseBoolean, parseCsv, parsePositiveInt } from './csv';
+import { detectDelimiter, missingColumns, parseBoolean, parseCsv, parseDate, parsePositiveInt } from './csv';
 
 describe('csv helpers', () => {
   it('parses comma and semicolon files with quotes and a BOM', () => {
@@ -17,6 +17,11 @@ describe('csv helpers', () => {
     expect(['no', '0'].map(parseBoolean)).toEqual([false, false]);
     expect(parseBoolean('quizás')).toBeUndefined();
     expect(['5', '0', '-1', '1.5', ''].map(parsePositiveInt)).toEqual([5, undefined, undefined, undefined, undefined]);
+  });
+
+  it('parses only valid ISO dates', () => {
+    expect(parseDate('2027-06-30')?.toISOString()).toBe('2027-06-30T00:00:00.000Z');
+    expect(['30/06/2027', '2027-02-30', '2027-6-1'].map(parseDate)).toEqual([undefined, undefined, undefined]);
   });
 
   it('reports missing required columns', () => {
