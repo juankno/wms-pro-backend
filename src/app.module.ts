@@ -28,6 +28,7 @@ import { LocationsModule } from './locations/locations.module';
 import { PartnersModule } from './partners/partners.module';
 import { ImportsModule } from './imports/imports.module';
 import { LotsModule } from './lots/lots.module';
+import { PurchasesModule } from './purchases/purchases.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { LotsModule } from './lots/lots.module';
     PartnersModule,
     ImportsModule,
     LotsModule,
+    PurchasesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

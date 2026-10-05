@@ -20,6 +20,7 @@ const TENANT_TABLES = [
   'product_barcodes',
   'lots',
   'lot_stock',
+  'purchase_orders',
 ];
 const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;
