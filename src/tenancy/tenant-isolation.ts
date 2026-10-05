@@ -22,6 +22,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'purchaseOrder',
   'receipt',
   'customFieldDefinition',
+  'sequence',
 ]);
 
 const FILTERED_OPERATIONS = new Set([

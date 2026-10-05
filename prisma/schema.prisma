@@ -73,6 +73,7 @@ model Tenant {
   purchaseOrders PurchaseOrder[]
   receipts       Receipt[]
   customFields   CustomFieldDefinition[]
+  sequences      Sequence[]
 
   @@map("tenants")
 }
@@ -796,4 +797,20 @@ enum ReceiptKind {
 enum ReturnDisposition {
   restock
   scrap
+}
+
+// Counter behind generated document references (PK-00001, OC-00001…), one per tenant and document type.
+model Sequence {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  prefix    String
+  padding   Int      @default(5)
+  nextValue Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("sequences")
 }

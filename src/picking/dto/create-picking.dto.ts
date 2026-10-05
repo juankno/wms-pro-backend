@@ -21,7 +21,13 @@ class PickingItemDto {
 }
 
 export class CreatePickingDto {
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50) reference!: string;
+  @ApiPropertyOptional({ description: 'Generated from the tenant sequence when omitted (PK-00001)' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  reference?: string;
+
   @ApiPropertyOptional({ description: "Required without customerId; defaults to the customer's name" })
   @IsOptional()
   @IsString()
