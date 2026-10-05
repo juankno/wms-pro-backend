@@ -24,6 +24,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'customFieldDefinition',
   'sequence',
   'salesOrder',
+  'pickingWave',
 ]);
 
 const FILTERED_OPERATIONS = new Set([

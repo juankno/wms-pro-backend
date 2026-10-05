@@ -75,6 +75,7 @@ model Tenant {
   customFields   CustomFieldDefinition[]
   sequences      Sequence[]
   salesOrders    SalesOrder[]
+  pickingWaves   PickingWave[]
 
   @@map("tenants")
 }
@@ -103,6 +104,8 @@ model User {
   purchaseOrders  PurchaseOrder[]
   receipts        Receipt[]
   salesOrders     SalesOrder[]
+  createdWaves    PickingWave[]    @relation("WaveCreator")
+  assignedWaves   PickingWave[]    @relation("WaveAssignee")
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -149,6 +152,7 @@ model Warehouse {
   purchaseOrders PurchaseOrder[]
   receipts       Receipt[]
   salesOrders    SalesOrder[]
+  pickingWaves   PickingWave[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -257,6 +261,7 @@ model PickingOrder {
   client       String
   customerId   String?
   salesOrderId String?
+  waveId       String?
   warehouseId  String
   status       OrderStatus @default(pending)
   priority     Priority    @default(medium)
@@ -276,6 +281,7 @@ model PickingOrder {
   packingOrder PackingOrder?
   returns      Receipt[]
   salesOrder   SalesOrder?   @relation(fields: [salesOrderId], references: [id])
+  wave         PickingWave?  @relation(fields: [waveId], references: [id])
   customer     Partner?      @relation(fields: [customerId], references: [id])
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
@@ -873,4 +879,34 @@ model SalesOrderItem {
 
   @@unique([salesOrderId, productId])
   @@map("sales_order_items")
+}
+
+enum WaveStatus {
+  open
+  completed
+  cancelled
+}
+
+// Picking orders of one warehouse picked together on a single route.
+model PickingWave {
+  id           String     @id @default(uuid())
+  tenantId     String
+  reference    String
+  warehouseId  String
+  status       WaveStatus @default(open)
+  assignedToId String?
+  createdById  String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  completedAt  DateTime?
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  assignedTo    User?          @relation("WaveAssignee", fields: [assignedToId], references: [id])
+  createdBy     User           @relation("WaveCreator", fields: [createdById], references: [id])
+  pickingOrders PickingOrder[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@map("picking_waves")
 }
