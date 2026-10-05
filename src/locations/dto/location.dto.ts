@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -48,10 +49,15 @@ export class CreateLocationDto {
   capacity?: number | null;
 
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) pickSequence?: number;
+
+  @ApiPropertyOptional({ type: Object, description: 'Values of the custom fields, keyed by field key; null clears one' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, unknown>;
 }
 
 export class UpdateLocationDto extends PartialType(
-  PickType(CreateLocationDto, ['code', 'name', 'storable', 'capacity', 'pickSequence'] as const),
+  PickType(CreateLocationDto, ['code', 'name', 'storable', 'capacity', 'pickSequence', 'customFields'] as const),
 ) {
   @ApiPropertyOptional({ nullable: true, description: 'null moves the location to the warehouse root' })
   @IsOptional()

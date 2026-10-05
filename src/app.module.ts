@@ -31,6 +31,7 @@ import { LotsModule } from './lots/lots.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceiptsModule } from './receipts/receipts.module';
 import { LabelsModule } from './labels/labels.module';
+import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { LabelsModule } from './labels/labels.module';
     PurchasesModule,
     ReceiptsModule,
     LabelsModule,
+    CustomFieldsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

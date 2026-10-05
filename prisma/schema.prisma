@@ -72,6 +72,7 @@ model Tenant {
   lotStock       LotStock[]
   purchaseOrders PurchaseOrder[]
   receipts       Receipt[]
+  customFields   CustomFieldDefinition[]
 
   @@map("tenants")
 }
@@ -165,6 +166,7 @@ model Product {
   photos        String[] @default([])
   // Lot-tracked products need a lot on every receipt and ship first-expired-first-out.
   lotTracking   Boolean  @default(false)
+  customFields  Json     @default("{}")
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -500,6 +502,7 @@ model Location {
   capacity     Int?
   // Walking order used to sort picking routes.
   pickSequence Int          @default(0)
+  customFields Json         @default("{}")
   active       Boolean      @default(true)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -542,23 +545,24 @@ model LocationStock {
 
 // Customer and/or supplier of the tenant; one company can be both.
 model Partner {
-  id          String   @id @default(uuid())
-  tenantId    String
-  code        String
-  name        String
-  taxId       String?
-  email       String?
-  phone       String?
-  address     String?
-  city        String?
-  country     String?
-  contactName String?
-  notes       String?
-  isCustomer  Boolean  @default(false)
-  isSupplier  Boolean  @default(false)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  tenantId     String
+  code         String
+  name         String
+  taxId        String?
+  email        String?
+  phone        String?
+  address      String?
+  city         String?
+  country      String?
+  contactName  String?
+  notes        String?
+  isCustomer   Boolean  @default(false)
+  isSupplier   Boolean  @default(false)
+  customFields Json     @default("{}")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   pickingOrders  PickingOrder[]
@@ -737,4 +741,39 @@ model ReceiptLine {
 
   @@index([receiptId])
   @@map("receipt_lines")
+}
+
+enum CustomFieldEntity {
+  product
+  partner
+  location
+}
+
+enum CustomFieldType {
+  text
+  number
+  boolean
+  date
+  select
+}
+
+// Tenant-defined attribute; values live in the customFields JSON of the entity, keyed by `key`.
+model CustomFieldDefinition {
+  id        String            @id @default(uuid())
+  tenantId  String
+  entity    CustomFieldEntity
+  key       String
+  label     String
+  type      CustomFieldType
+  options   String[]          @default([])
+  required  Boolean           @default(false)
+  active    Boolean           @default(true)
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, entity, key])
+  @@map("custom_field_definitions")
 }

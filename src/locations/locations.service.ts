@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { LocationType, Prisma } from '@prisma/client';
+import { CustomFieldEntity, LocationType, Prisma } from '@prisma/client';
 import { buildMeta, paginate } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { CreateLocationDto, GenerateLocationsDto, LocationQueryDto, UpdateLocationDto } from './dto/location.dto';
 import { expandLevels, GeneratedLocation } from './location-generator';
+import { resolveCustomFields } from '../custom-fields/custom-fields.service';
 
 export const STORABLE_TYPES = new Set<LocationType>([LocationType.bin, LocationType.dock, LocationType.staging]);
 const MAX_DEPTH = 20;
@@ -53,9 +54,11 @@ export class LocationsService {
     assertWarehouseAccess(user, dto.warehouseId);
     await this.assertWarehouseExists(dto.warehouseId);
     if (dto.parentId) await this.findParent(dto.parentId, dto.warehouseId);
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.location, {}, dto.customFields, 'create');
     return this.prisma.location.create({
       data: {
         ...dto,
+        customFields,
         tenantId: requireTenantId(),
         code: dto.code.toUpperCase(),
         storable: dto.storable ?? STORABLE_TYPES.has(dto.type),
@@ -69,9 +72,10 @@ export class LocationsService {
       await this.findParent(dto.parentId, location.warehouseId);
       await this.assertNotDescendant(dto.parentId, id);
     }
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.location, location.customFields, dto.customFields, 'update');
     return this.prisma.location.update({
       where: { id },
-      data: { ...dto, code: dto.code?.toUpperCase() },
+      data: { ...dto, customFields, code: dto.code?.toUpperCase() },
     });
   }
 

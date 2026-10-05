@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export const PARTNER_KINDS = ['customer', 'supplier'] as const;
@@ -24,6 +24,11 @@ export class CreatePartnerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string;
   @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() isCustomer?: boolean;
   @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() isSupplier?: boolean;
+
+  @ApiPropertyOptional({ type: Object, description: 'Values of the custom fields, keyed by field key; null clears one' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, unknown>;
 }
 
 export class UpdatePartnerDto extends PartialType(CreatePartnerDto) {
