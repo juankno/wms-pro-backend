@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PurchaseOrderStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -15,6 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { splitList } from '../../common/dto/list-transform';
 
 export class PurchaseOrderItemDto {
   @ApiProperty() @IsString() @IsNotEmpty() productId!: string;
@@ -50,7 +51,11 @@ export class UpdatePurchaseOrderDto {
 }
 
 export class PurchaseOrderQueryDto extends PaginationDto {
-  @ApiPropertyOptional({ enum: PurchaseOrderStatus }) @IsOptional() @IsEnum(PurchaseOrderStatus) status?: PurchaseOrderStatus;
+  @ApiPropertyOptional({ enum: PurchaseOrderStatus, isArray: true, description: 'One or more, comma-separated' })
+  @IsOptional()
+  @Transform(splitList)
+  @IsEnum(PurchaseOrderStatus, { each: true })
+  status?: PurchaseOrderStatus[];
   @ApiPropertyOptional() @IsOptional() @IsString() supplierId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() warehouseId?: string;
   @ApiPropertyOptional({ description: 'Reference or supplier name contains' }) @IsOptional() @IsString() search?: string;

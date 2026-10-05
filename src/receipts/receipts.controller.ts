@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -6,7 +6,7 @@ import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { scopeWarehouseFilter } from '../common/utils/warehouse-scope';
-import { AddReceiptLineDto, CompleteReceiptDto, CreateReceiptDto, ReceiptQueryDto } from './dto/receipt.dto';
+import { AddReceiptLineDto, CompleteReceiptDto, CreateReceiptDto, ReceiptQueryDto, UpdateReceiptLineDto } from './dto/receipt.dto';
 import { ReceiptsService } from './receipts.service';
 
 @ApiTags('receipts')
@@ -39,6 +39,17 @@ export class ReceiptsController {
   @ApiOperation({ summary: 'Registrar unidades recibidas (con ubicación y lote opcionales)' })
   addLine(@Param('id') id: string, @Body() dto: AddReceiptLineDto, @CurrentUser() user: AuthUser) {
     return this.receipts.addLine(id, dto, user);
+  }
+
+  @Patch(':id/lines/:lineId')
+  @ApiOperation({ summary: 'Corregir cantidad, ubicación o lote de una línea' })
+  updateLine(
+    @Param('id') id: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: UpdateReceiptLineDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.receipts.updateLine(id, lineId, dto, user);
   }
 
   @Delete(':id/lines/:lineId')

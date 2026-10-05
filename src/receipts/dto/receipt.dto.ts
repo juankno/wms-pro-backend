@@ -1,7 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ReceiptStatus } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { splitList } from '../../common/dto/list-transform';
 
 export class CreateReceiptDto {
   @ApiPropertyOptional({ description: 'Receive against this order; its warehouse and supplier are used' })
@@ -26,6 +39,19 @@ export class AddReceiptLineDto {
   @ApiPropertyOptional({ example: '2027-06-30' }) @IsOptional() @IsDateString() lotExpiresAt?: string;
 }
 
+export class UpdateReceiptLineDto {
+  @ApiPropertyOptional({ minimum: 1 }) @IsOptional() @IsInt() @IsPositive() quantity?: number;
+
+  @ApiPropertyOptional({ nullable: true, description: 'null leaves the units without location' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  locationId?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) lot?: string;
+  @ApiPropertyOptional({ example: '2027-06-30' }) @IsOptional() @IsDateString() lotExpiresAt?: string;
+}
+
 export class CompleteReceiptDto {
   @ApiPropertyOptional({ default: false, description: 'Accept more units than ordered' })
   @IsOptional()
@@ -34,7 +60,11 @@ export class CompleteReceiptDto {
 }
 
 export class ReceiptQueryDto extends PaginationDto {
-  @ApiPropertyOptional({ enum: ReceiptStatus }) @IsOptional() @IsEnum(ReceiptStatus) status?: ReceiptStatus;
+  @ApiPropertyOptional({ enum: ReceiptStatus, isArray: true, description: 'One or more, comma-separated' })
+  @IsOptional()
+  @Transform(splitList)
+  @IsEnum(ReceiptStatus, { each: true })
+  status?: ReceiptStatus[];
   @ApiPropertyOptional() @IsOptional() @IsString() warehouseId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() purchaseOrderId?: string;
 }

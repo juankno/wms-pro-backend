@@ -22,7 +22,7 @@ export class PurchaseOrdersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(opts: {
-    status?: PurchaseOrderStatus;
+    status?: PurchaseOrderStatus[];
     supplierId?: string;
     warehouseId?: string;
     search?: string;
@@ -30,7 +30,7 @@ export class PurchaseOrdersService {
     limit: number;
   }) {
     const where: Prisma.PurchaseOrderWhereInput = {
-      status: opts.status,
+      status: opts.status && { in: opts.status },
       supplierId: opts.supplierId,
       warehouseId: opts.warehouseId,
       ...(opts.search && {
