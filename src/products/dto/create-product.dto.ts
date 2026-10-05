@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty()
@@ -49,6 +49,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   lotTracking?: boolean;
+
+  @ApiPropertyOptional({ type: Object, description: 'Values of the custom fields, keyed by field key; null clears one' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, unknown>;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {

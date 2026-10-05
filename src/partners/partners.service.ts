@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CustomFieldEntity, Prisma } from '@prisma/client';
 import { buildMeta, paginate } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { CreatePartnerDto, PartnerKind, PartnerQueryDto, UpdatePartnerDto } from './dto/partner.dto';
+import { resolveCustomFields } from '../custom-fields/custom-fields.service';
 
 const KIND_FILTER: Record<PartnerKind, Prisma.PartnerWhereInput> = {
   customer: { isCustomer: true },
@@ -43,13 +44,15 @@ export class PartnersService {
 
   async create(dto: CreatePartnerDto) {
     this.assertHasKind(dto.isCustomer, dto.isSupplier);
-    return this.prisma.partner.create({ data: { ...dto, code: dto.code.toUpperCase(), tenantId: requireTenantId() } });
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.partner, {}, dto.customFields, 'create');
+    return this.prisma.partner.create({ data: { ...dto, customFields, code: dto.code.toUpperCase(), tenantId: requireTenantId() } });
   }
 
   async update(id: string, dto: UpdatePartnerDto) {
     const partner = await this.findById(id);
     this.assertHasKind(dto.isCustomer ?? partner.isCustomer, dto.isSupplier ?? partner.isSupplier);
-    return this.prisma.partner.update({ where: { id }, data: { ...dto, code: dto.code?.toUpperCase() } });
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.partner, partner.customFields, dto.customFields, 'update');
+    return this.prisma.partner.update({ where: { id }, data: { ...dto, customFields, code: dto.code?.toUpperCase() } });
   }
 
   private assertHasKind(isCustomer?: boolean, isSupplier?: boolean) {
