@@ -4,6 +4,7 @@ import { requireTenantId } from '../tenancy/tenant-context';
 export const SEQUENCE_DEFAULTS = {
   picking: 'PK',
   purchase: 'OC',
+  sales: 'PV',
 } as const;
 
 export type SequenceKey = keyof typeof SEQUENCE_DEFAULTS;

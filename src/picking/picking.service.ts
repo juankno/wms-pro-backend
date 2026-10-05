@@ -18,8 +18,21 @@ import { requireTenantId } from '../tenancy/tenant-context';
 import { PlanLimitsService } from '../tenancy/plan-limits.service';
 import { recordPickedLots, returnPickedLots, takeFromLots } from '../stock/lot-stock';
 import { nextReference } from '../sequences/sequence';
+import { applySalesOrderProgress } from '../sales/sales-order-progress';
 
 type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
+
+export interface NewPickingOrder {
+  reference?: string;
+  client?: string;
+  customerId?: string;
+  salesOrderId?: string;
+  warehouseId: string;
+  priority?: Priority;
+  assignedToId?: string;
+  notes?: string;
+  items: { productId: string; quantity: number }[];
+}
 
 const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   pending: [OrderStatus.in_progress, OrderStatus.cancelled],
@@ -93,97 +106,89 @@ export class PickingService {
     return order;
   }
 
-  async create(
-    data: {
-      reference?: string;
-      client?: string;
-      customerId?: string;
-      warehouseId: string;
-      priority?: Priority;
-      assignedToId?: string;
-      notes?: string;
-      items: { productId: string; quantity: number }[];
-    },
-    user: AuthUser,
-  ) {
+  async create(data: NewPickingOrder, user: AuthUser) {
     await this.planLimits.assertCanCreate('ordersPerMonth');
-    return this.prisma.$transaction(async (tx) => {
-      const client = await this.resolveClient(tx, data.client, data.customerId);
-      const reference =
-        data.reference ??
-        (await nextReference(tx, 'picking', async (candidate) => !!(await tx.pickingOrder.findFirst({ where: { reference: candidate } }))));
-      const requested = sumByProduct(data.items, (i) => i.quantity);
-      const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);
+    return this.prisma.$transaction((tx) => this.createInTransaction(tx, data, user));
+  }
 
-      const shortages = [...requested].flatMap(([productId, quantity]) => {
-        const stock = stocks.get(productId);
-        const available = stock ? stock.onHand - stock.reserved : 0;
-        return available < quantity ? [{ productId, requested: quantity, available }] : [];
-      });
-      if (shortages.length > 0) {
-        throw new ConflictException({
-          error: 'INSUFFICIENT_STOCK',
-          message: 'Stock insuficiente para uno o más ítems',
-          details: shortages,
-        });
-      }
+  // Reserves the stock and creates the order inside the caller's transaction (sales order releases).
+  async createInTransaction(tx: Prisma.TransactionClient, data: NewPickingOrder, user: AuthUser) {
+    const client = await this.resolveClient(tx, data.client, data.customerId);
+    const reference =
+      data.reference ??
+      (await nextReference(tx, 'picking', async (candidate) => !!(await tx.pickingOrder.findFirst({ where: { reference: candidate } }))));
+    const requested = sumByProduct(data.items, (i) => i.quantity);
+    const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);
 
-      for (const [productId, quantity] of requested) {
-        await tx.warehouseStock.update({
-          where: { id: stocks.get(productId)!.id },
-          data: { reserved: { increment: quantity } },
-        });
-      }
-
-      const suggestions = await suggestedLocations(tx, data.warehouseId, [...requested.keys()]);
-      const products = await tx.product.findMany({ where: { id: { in: [...requested.keys()] } } });
-      const productById = new Map(products.map((p) => [p.id, p]));
-
-      const order = await tx.pickingOrder.create({
-        data: {
-          tenantId: requireTenantId(),
-          reference,
-          client: client.name,
-          customerId: client.customerId,
-          warehouseId: data.warehouseId,
-          priority: data.priority ?? Priority.medium,
-          assignedToId: data.assignedToId,
-          notes: data.notes,
-          createdById: user.id,
-          items: {
-            create: data.items.map((item) => {
-              const product = productById.get(item.productId)!;
-              return {
-                productId: item.productId,
-                productCode: product.code,
-                productName: product.name,
-                quantity: item.quantity,
-                reservedQuantity: item.quantity,
-                location: suggestions.get(item.productId) ?? stocks.get(item.productId)!.location,
-                barcode: product.barcode ?? '',
-                unit: product.unit,
-              };
-            }),
-          },
-        },
-        include: { items: true },
-      });
-
-      await this.activity.log(
-        {
-          orderId: order.id,
-          orderType: 'picking',
-          action: 'created',
-          detail: `Orden creada con ${order.items.length} ítems`,
-          operator: user.name,
-          userId: user.id,
-          warehouseId: order.warehouseId,
-        },
-        tx,
-      );
-
-      return order;
+    const shortages = [...requested].flatMap(([productId, quantity]) => {
+      const stock = stocks.get(productId);
+      const available = stock ? stock.onHand - stock.reserved : 0;
+      return available < quantity ? [{ productId, requested: quantity, available }] : [];
     });
+    if (shortages.length > 0) {
+      throw new ConflictException({
+        error: 'INSUFFICIENT_STOCK',
+        message: 'Stock insuficiente para uno o más ítems',
+        details: shortages,
+      });
+    }
+
+    for (const [productId, quantity] of requested) {
+      await tx.warehouseStock.update({
+        where: { id: stocks.get(productId)!.id },
+        data: { reserved: { increment: quantity } },
+      });
+    }
+
+    const suggestions = await suggestedLocations(tx, data.warehouseId, [...requested.keys()]);
+    const products = await tx.product.findMany({ where: { id: { in: [...requested.keys()] } } });
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    const order = await tx.pickingOrder.create({
+      data: {
+        tenantId: requireTenantId(),
+        reference,
+        client: client.name,
+        customerId: client.customerId,
+        salesOrderId: data.salesOrderId,
+        warehouseId: data.warehouseId,
+        priority: data.priority ?? Priority.medium,
+        assignedToId: data.assignedToId,
+        notes: data.notes,
+        createdById: user.id,
+        items: {
+          create: data.items.map((item) => {
+            const product = productById.get(item.productId)!;
+            return {
+              productId: item.productId,
+              productCode: product.code,
+              productName: product.name,
+              quantity: item.quantity,
+              reservedQuantity: item.quantity,
+              location: suggestions.get(item.productId) ?? stocks.get(item.productId)!.location,
+              barcode: product.barcode ?? '',
+              unit: product.unit,
+            };
+          }),
+        },
+      },
+      include: { items: true },
+    });
+
+    await this.activity.log(
+      {
+        orderId: order.id,
+        orderType: 'picking',
+        action: 'created',
+        detail: `Orden creada con ${order.items.length} ítems`,
+        operator: user.name,
+        userId: user.id,
+        warehouseId: order.warehouseId,
+      },
+      tx,
+    );
+
+    return order;
   }
 
   async updateStatus(id: string, status: OrderTargetStatus, user: AuthUser) {
@@ -209,6 +214,7 @@ export class PickingService {
       if (status === OrderStatus.cancelled) {
         await this.releasePicked(tx, order);
         await this.settleReservations(tx, order, () => 0);
+        await this.returnToSalesOrder(tx, order);
       }
 
       const updated = await tx.pickingOrder.update({
@@ -324,6 +330,7 @@ export class PickingService {
       }
       await this.releasePicked(tx, order);
       await this.settleReservations(tx, order, () => 0);
+      await this.returnToSalesOrder(tx, order);
       return tx.pickingOrder.delete({ where: { id } });
     });
   }
@@ -397,6 +404,17 @@ export class PickingService {
         data: { picked: Math.max(0, stock.picked - quantity) },
       });
     }
+  }
+
+  // Quantities of a picking that will not ship become pending again in its sales order.
+  private async returnToSalesOrder(tx: Prisma.TransactionClient, order: LockedPickingOrder) {
+    if (!order.salesOrderId) return;
+    const quantities = sumByProduct(order.items, (item) => item.quantity);
+    await applySalesOrderProgress(
+      tx,
+      order.salesOrderId,
+      new Map([...quantities].map(([productId, quantity]) => [productId, { released: -quantity, shipped: 0 }])),
+    );
   }
 
   private async resolveClient(tx: Prisma.TransactionClient, client?: string, customerId?: string) {

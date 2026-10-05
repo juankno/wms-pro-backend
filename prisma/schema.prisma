@@ -74,6 +74,7 @@ model Tenant {
   receipts       Receipt[]
   customFields   CustomFieldDefinition[]
   sequences      Sequence[]
+  salesOrders    SalesOrder[]
 
   @@map("tenants")
 }
@@ -101,6 +102,7 @@ model User {
   createdPacking  PackingOrder[]   @relation("PackingCreator")
   purchaseOrders  PurchaseOrder[]
   receipts        Receipt[]
+  salesOrders     SalesOrder[]
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -146,6 +148,7 @@ model Warehouse {
   lotStock       LotStock[]
   purchaseOrders PurchaseOrder[]
   receipts       Receipt[]
+  salesOrders    SalesOrder[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -182,6 +185,7 @@ model Product {
   lotStock       LotStock[]
   purchaseItems  PurchaseOrderItem[]
   receiptLines   ReceiptLine[]
+  salesItems     SalesOrderItem[]
   tenant         Tenant              @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -252,6 +256,7 @@ model PickingOrder {
   // Name shown on the order; a snapshot of the customer's name when customerId is set.
   client       String
   customerId   String?
+  salesOrderId String?
   warehouseId  String
   status       OrderStatus @default(pending)
   priority     Priority    @default(medium)
@@ -270,6 +275,7 @@ model PickingOrder {
   items        PickingItem[]
   packingOrder PackingOrder?
   returns      Receipt[]
+  salesOrder   SalesOrder?   @relation(fields: [salesOrderId], references: [id])
   customer     Partner?      @relation(fields: [customerId], references: [id])
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
@@ -571,6 +577,7 @@ model Partner {
   purchaseOrders PurchaseOrder[]
   receipts       Receipt[]       @relation("ReceiptSupplier")
   returns        Receipt[]       @relation("ReceiptCustomer")
+  salesOrders    SalesOrder[]
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
@@ -813,4 +820,57 @@ model Sequence {
 
   @@unique([tenantId, key])
   @@map("sequences")
+}
+
+enum SalesOrderStatus {
+  open
+  partially_released
+  released
+  partially_shipped
+  shipped
+  cancelled
+}
+
+// Customer demand. Releasing it reserves stock through picking orders; shipping is tracked per item.
+model SalesOrder {
+  id          String           @id @default(uuid())
+  tenantId    String
+  reference   String
+  customerId  String?
+  client      String
+  warehouseId String
+  status      SalesOrderStatus @default(open)
+  priority    Priority         @default(medium)
+  requestedAt DateTime?
+  notes       String?
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  customer      Partner?         @relation(fields: [customerId], references: [id])
+  warehouse     Warehouse        @relation(fields: [warehouseId], references: [id])
+  createdBy     User             @relation(fields: [createdById], references: [id])
+  items         SalesOrderItem[]
+  pickingOrders PickingOrder[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id               String @id @default(uuid())
+  salesOrderId     String
+  productId        String
+  quantity         Int
+  // Units sent to picking orders that have not shipped yet, plus shipped ones.
+  releasedQuantity Int    @default(0)
+  shippedQuantity  Int    @default(0)
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([salesOrderId, productId])
+  @@map("sales_order_items")
 }
