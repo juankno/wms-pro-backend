@@ -99,7 +99,7 @@ describe('Receiving (integration)', () => {
 
     const line = await receipts.addLine(receipt.id, { productId: plainId, quantity: 2 }, operator);
     const result = await receipts.complete(receipt.id, false, operator);
-    expect(result.differences).toEqual([{ productId: plainId, ordered: null, received: 2, pending: 0, over: 0 }]);
+    expect(result.differences).toEqual([{ productId: plainId, ordered: null, received: 2, scrapped: 0, pending: 0, over: 0 }]);
     await expect(receipts.removeLine(receipt.id, line.id, operator)).rejects.toMatchObject({ response: { error: 'RECEIPT_INVALID_STATUS' } });
   });
 
