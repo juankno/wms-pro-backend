@@ -154,14 +154,14 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 ### Fase 4 — Salidas (4 semanas)
 - [x] 4.1 Pedido de venta → asignación y reserva → tareas de picking. Backend #35, web #14.
 - [x] 4.2 Picking por pedido, en lote o por olas, con ruta por ubicación. Backend #36, web #14, móvil #10.
-- [x] 4.3 Estrategias FIFO, FEFO y LIFO configurables. Backend #37 (por empresa y por producto, sobre lotes); falta la UI.
-- [x] 4.4 Packing con contenido por caja y etiquetas ZPL/PDF. Backend #38 (etiqueta de envío por caja); falta la UI.
-- [x] 4.5 Despacho, transportadora, guía y prueba de entrega. Backend #38; falta la UI web y móvil.
+- [x] 4.3 Estrategias FIFO, FEFO y LIFO configurables. Backend #37, web #15 (por empresa y por producto, sobre lotes).
+- [x] 4.4 Packing con contenido por caja y etiquetas ZPL/PDF. Backend #38, web #15 (etiqueta de envío por caja).
+- [x] 4.5 Despacho, transportadora, guía y prueba de entrega. Backend #38, web #15; falta la entrega desde el móvil.
 - [x] 4.6 Referencias generadas en el backend con secuencias por tenant (M10). Backend #34, web #13.
 
 ### Fase 5 — Control de inventario (2–3 semanas)
-- [ ] 5.1 Conteos cíclicos con aprobación de diferencias.
-- [ ] 5.2 Traslados con estado en tránsito y recepción en el destino.
+- [x] 5.1 Conteos cíclicos con aprobación de diferencias. Backend #39; falta la UI web y móvil.
+- [x] 5.2 Traslados con estado en tránsito y recepción en el destino. Backend #40; falta la UI web y móvil.
 - [ ] 5.3 Reabastecimiento por mínimo y máximo.
 - [ ] 5.4 Notificaciones push y por correo reales (B18).
 
@@ -190,15 +190,16 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - **Fase 1 completa** (pendiente de merge).
 - **Fase 2 completa.**
 - **Fase 3 en curso:** 3.1, 3.3 y 3.5 (API) listas; 3.4 con sugerencia simple; 3.2 (ASN) y 3.6 (putaway móvil) pendientes.
-- **Fase 4:** API completa; falta UI de estrategias y despacho.
+- **Fase 4 completa** (falta la entrega desde el móvil).
+- **Fase 5 en curso:** 5.1 y 5.2 con API lista; 5.3 y 5.4 pendientes.
 - **Mergeados:** backend #1–#6.
 - **PRs abiertos, con CI en verde (mergear en orden por repo):**
-  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación) → #23 (clientes y proveedores) → #24 (códigos de barras) → #25 (importación CSV) → #26 (lotes) → #27 (órdenes de compra) → #28 (recepción) → #29 (etiquetas) → #31 (campos personalizados) → #32 (ajustes de recepción) → #33 (devoluciones) → #34 (secuencias) → #35 (pedidos de venta) → #36 (olas) → #37 (estrategias) → #38 (despacho).
-  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma) → #8 (ubicaciones) → #9 (clientes y códigos de barras) → #10 (importación y lotes) → #11 (compras y recepción) → #12 (campos personalizados y etiquetas) → #13 (devoluciones y numeración) → #14 (pedidos de venta y olas).
+  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación) → #23 (clientes y proveedores) → #24 (códigos de barras) → #25 (importación CSV) → #26 (lotes) → #27 (órdenes de compra) → #28 (recepción) → #29 (etiquetas) → #31 (campos personalizados) → #32 (ajustes de recepción) → #33 (devoluciones) → #34 (secuencias) → #35 (pedidos de venta) → #36 (olas) → #37 (estrategias) → #38 (despacho) → #39 (conteos) → #40 (traslados en tránsito).
+  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma) → #8 (ubicaciones) → #9 (clientes y códigos de barras) → #10 (importación y lotes) → #11 (compras y recepción) → #12 (campos personalizados y etiquetas) → #13 (devoluciones y numeración) → #14 (pedidos de venta y olas) → #15 (despachos y estrategias).
   - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos) → #6 (ubicaciones) → #7 (empaques al escanear) → #8 (lotes) → #9 (recepción) → #10 (olas).
 - **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con web #6 y móvil #5; backend #19 con web #7; backend #22 con web #8 y móvil #6.
 - **Variables nuevas:** `STORAGE_DRIVER`/`S3_*` (#14), `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL` (#18). Ver `.env.example`.
-- **Siguiente tarea:** UI de despacho y estrategias; luego Fase 5 (conteos cíclicos, traslados en tránsito, reabastecimiento, notificaciones).
+- **Siguiente tarea:** UI de conteos y traslados (web y móvil); 5.3 (reabastecimiento) y 5.4 (notificaciones).
 - **Permiso nuevo para operarios:** desde #28 el rol operario incluye `receiving.execute` por defecto.
 - **Merges bloqueados:** el plugin de Partequipos sigue bloqueando `gh pr merge` aun después de reiniciar la sesión; hay que deshabilitarlo para estos repos o mergear a mano.
 - **Prueba en navegador (Playwright, 2026-10-04):** web #6–#8 cargan sin errores de consola ni de API (usuarios, roles, auditoría, empresa, ubicaciones, stock, producto, invitación, consola de plataforma) y la sesión de soporte entra, muestra el banner y vuelve a la consola. Móvil #5 y #6 sin probar en dispositivo.
