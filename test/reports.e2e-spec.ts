@@ -118,7 +118,7 @@ describe('Product listing and reports (integration)', () => {
     const report = await reports.getStockStatus(warehouseId);
 
     expect(report.summary).toEqual({ total: 3, outOfStock: 1, lowStock: 1, ok: 1 });
-    expect(report.lowStock[0]).toMatchObject({ available: 3, minStock: 5 });
+    expect(report.lowStock[0]).toMatchObject({ available: 3, minStock: 5, warehouse: { id: warehouseId, name: 'Reports' } });
   });
 
   it('classifies adjustments as inbound and outbound movements', async () => {

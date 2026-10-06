@@ -17,6 +17,8 @@ type StockRow = {
   name: string;
   category: string;
   warehouseId: string;
+  warehouseCode: string;
+  warehouseName: string;
   onHand: number;
   reserved: number;
   minStock: number;
@@ -32,6 +34,7 @@ function toStockItem(row: StockRow) {
     name: row.name,
     category: row.category,
     warehouseId: row.warehouseId,
+    warehouse: { id: row.warehouseId, code: row.warehouseCode, name: row.warehouseName },
     onHand: row.onHand,
     reserved: row.reserved,
     available: Math.max(0, row.onHand - row.reserved),
@@ -163,9 +166,11 @@ export class ReportsService {
   private stockRows(warehouseId: string | undefined, condition: Prisma.Sql) {
     return this.prisma.$queryRaw<StockRow[]>`
       SELECT p.id, p.code, p.name, p.category, ws."warehouseId",
+             w.code AS "warehouseCode", w.name AS "warehouseName",
              ws."onHand", ws."reserved", ws."minStock", ws.location
       FROM warehouse_stock ws
       JOIN products p ON p.id = ws."productId" AND p.active
+      JOIN warehouses w ON w.id = ws."warehouseId"
       WHERE ${stockScopeCondition(requireTenantId(), warehouseId)} AND ${condition}
       ORDER BY (ws."onHand" - ws."reserved"), p.name`;
   }
