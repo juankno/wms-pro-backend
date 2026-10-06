@@ -71,6 +71,7 @@ model Tenant {
   lots           Lot[]
   lotStock       LotStock[]
   purchaseOrders PurchaseOrder[]
+  receipts       Receipt[]
 
   @@map("tenants")
 }
@@ -97,6 +98,7 @@ model User {
   assignedPacking PackingOrder[]   @relation("PackingAssignee")
   createdPacking  PackingOrder[]   @relation("PackingCreator")
   purchaseOrders  PurchaseOrder[]
+  receipts        Receipt[]
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -141,6 +143,7 @@ model Warehouse {
   locationStock  LocationStock[]
   lotStock       LotStock[]
   purchaseOrders PurchaseOrder[]
+  receipts       Receipt[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -175,6 +178,7 @@ model Product {
   lots           Lot[]
   lotStock       LotStock[]
   purchaseItems  PurchaseOrderItem[]
+  receiptLines   ReceiptLine[]
   tenant         Tenant              @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -505,6 +509,7 @@ model Location {
   parent        Location?       @relation("LocationTree", fields: [parentId], references: [id])
   children      Location[]      @relation("LocationTree")
   stock         LocationStock[]
+  receiptLines  ReceiptLine[]
   movementsFrom StockMovement[] @relation("MovementLocation")
   movementsTo   StockMovement[] @relation("MovementToLocation")
 
@@ -558,6 +563,7 @@ model Partner {
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   pickingOrders  PickingOrder[]
   purchaseOrders PurchaseOrder[]
+  receipts       Receipt[]
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
@@ -663,6 +669,7 @@ model PurchaseOrder {
   warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
   createdBy User                @relation(fields: [createdById], references: [id])
   items     PurchaseOrderItem[]
+  receipts  Receipt[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, status])
@@ -681,4 +688,53 @@ model PurchaseOrderItem {
 
   @@unique([purchaseOrderId, productId])
   @@map("purchase_order_items")
+}
+
+enum ReceiptStatus {
+  open
+  completed
+  cancelled
+}
+
+// Goods arriving at a warehouse, against a purchase order or blind. Stock moves only on completion.
+model Receipt {
+  id              String        @id @default(uuid())
+  tenantId        String
+  purchaseOrderId String?
+  supplierId      String?
+  warehouseId     String
+  status          ReceiptStatus @default(open)
+  notes           String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Partner?       @relation(fields: [supplierId], references: [id])
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  lines         ReceiptLine[]
+
+  @@index([tenantId, status])
+  @@map("receipts")
+}
+
+model ReceiptLine {
+  id           String    @id @default(uuid())
+  receiptId    String
+  productId    String
+  quantity     Int
+  locationId   String?
+  lotCode      String?
+  lotExpiresAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  receipt  Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product  Product   @relation(fields: [productId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@index([receiptId])
+  @@map("receipt_lines")
 }

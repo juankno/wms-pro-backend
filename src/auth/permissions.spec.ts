@@ -5,7 +5,7 @@ import { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, effectivePermissions } from 
 describe('effectivePermissions', () => {
   it('uses the defaults of the base role without a custom role', () => {
     expect(effectivePermissions(Role.supervisor)).toEqual(DEFAULT_ROLE_PERMISSIONS.supervisor);
-    expect(effectivePermissions(Role.operator)).toEqual([]);
+    expect(effectivePermissions(Role.operator)).toEqual(['receiving.execute']);
   });
 
   it('replaces the base permissions with the custom role ones', () => {
