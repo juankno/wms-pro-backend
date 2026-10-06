@@ -43,6 +43,7 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 | D14 | **Importación por integración**: API con *API keys* por empresa (hash, scopes `products:write`, `stock:write`…, rotación, rate limit) y endpoints por lotes (`POST /integrations/v1/products/batch`, hasta 1000 filas, upsert por código e `Idempotency-Key`); lotes grandes se encolan y responden un `jobId`. Comparte el validador del CSV y luego se suman webhooks (Fase 7). | Más volumen que Excel, idempotente ante reintentos, seguro y auditable. |
 | D15 | **Eliminación lógica** (`deletedAt`) para maestros y documentos, con filtro automático en el proxy de tenant, índices únicos parciales (`WHERE "deletedAt" IS NULL`) para reutilizar códigos y **purga física programada** tras un plazo configurable (90 días por defecto). Las líneas hijas siguen borrándose dentro de la transacción del padre. | Recuperación y trazabilidad; los borrados ya son transaccionales, así que el riesgo real es perder información, no corromperla. |
 | D16 | **Documentos PDF desde plantillas HTML** (Handlebars) renderizadas con Chromium headless en un trabajo de D13 y guardadas en el almacenamiento de objetos; `pdfkit` se mantiene para etiquetas. Importaciones admiten CSV y XLSX (`exceljs`) en streaming. | Plantillas editables por empresa (logo, datos legales) sin bloquear la API. |
+| D17 | **Integración con ERP mediante conectores** sobre un contrato común (datos maestros de entrada, documentos de salida, registro de sincronización). El ERP manda en maestros y pedidos; WMS Pro manda en la ejecución física y publica cada operación terminada como documento del ERP. El primer conector previsto es **SAP Business One vía Service Layer**; S/4HANA (APIs OData) sería un conector aparte. *Propuesta a futuro, fuera de las prioridades actuales.* | Integrarse con el ERP del cliente suele decidir la compra, y el contrato común evita amarrar el núcleo a un ERP concreto (Visión). |
 
 ## 4. Diagnóstico inicial (2026-10-04)
 
@@ -195,23 +196,28 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 - [ ] 8.4 Legal: términos, Ley 1581 (Habeas Data), acuerdo de tratamiento de datos (DPA).
 - [ ] 8.5 Copias de seguridad y restauración por tenant, monitoreo y SLA.
 
+### Propuestas a futuro (fuera de prioridad)
+
+Ideas evaluadas y aceptadas como dirección del producto, sin fecha. Se priorizan cuando haya un cliente piloto o demanda concreta.
+
+**F1 — Sincronización con SAP Business One (Service Layer)** (D17; estimado 4–6 semanas; requiere 5.5.1, 5.5.3 y 7.2)
+- [ ] F1.1 Contrato de conector ERP: configuración cifrada por empresa, mapeo de almacenes, series y campos, y registro de sincronización con reenvío.
+- [ ] F1.2 Entrada desde SAP: artículos, socios de negocio, almacenes, órdenes de compra y pedidos de venta. Service Layer no avisa los cambios, así que se consultan periódicamente por fecha y hora de actualización, leyendo por páginas.
+- [ ] F1.3 Salida hacia SAP: recepción → entrada de mercancía (`PurchaseDeliveryNotes`), despacho → entrega (`DeliveryNotes`), devolución (`Returns`), traslado (`StockTransfers`) y ajustes de conteo (`InventoryGenEntries`/`InventoryGenExits`), con los lotes como `BatchNumbers`.
+- [ ] F1.4 Confiabilidad: cada envío es un trabajo de D13 con reintentos; se guarda el `DocEntry` de SAP en el documento de WMS Pro y el id de WMS Pro en un campo de usuario de SAP, para no duplicar documentos al reintentar. Sesión de Service Layer reutilizada (vence a los 30 minutos) y envíos agrupados con `$batch`.
+- [ ] F1.5 Conectividad: Service Layer suele estar en el servidor del cliente, detrás de su firewall. Piloto con Service Layer publicado por HTTPS y lista de IPs permitidas; a escala, un agente liviano en el servidor del cliente que solo hace conexiones de salida.
+- Pendiente de definir: versión y base de datos de SAP del primer cliente, base de pruebas de SAP para desarrollar, licencia del usuario de integración, y si SAP maneja ubicaciones (se recomienda que SAP lleve el stock por almacén y WMS Pro el detalle por ubicación).
+
 ## 6. Estado actual
 
-- **Fase 0 completa** (pendiente de merge). B17 quedó resuelto con la tarea 1.7.
-- **Fase 1 completa** (pendiente de merge).
-- **Fase 2 completa.**
+- **Fases 0, 1, 2 y 4 completas** (la entrega desde el móvil de la Fase 4 sigue pendiente).
 - **Fase 3 en curso:** 3.1, 3.3 y 3.5 (API) listas; 3.4 con sugerencia simple; 3.2 (ASN) y 3.6 (putaway móvil) pendientes.
-- **Fase 4 completa** (falta la entrega desde el móvil).
 - **Fase 5 en curso:** 5.1 y 5.2 con API lista; 5.3 y 5.4 pendientes.
-- **Mergeados:** backend #1–#6.
-- **PRs abiertos, con CI en verde (mergear en orden por repo):**
-  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación) → #23 (clientes y proveedores) → #24 (códigos de barras) → #25 (importación CSV) → #26 (lotes) → #27 (órdenes de compra) → #28 (recepción) → #29 (etiquetas) → #31 (campos personalizados) → #32 (ajustes de recepción) → #33 (devoluciones) → #34 (secuencias) → #35 (pedidos de venta) → #36 (olas) → #37 (estrategias) → #38 (despacho) → #39 (conteos) → #40 (traslados en tránsito).
-  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma) → #8 (ubicaciones) → #9 (clientes y códigos de barras) → #10 (importación y lotes) → #11 (compras y recepción) → #12 (campos personalizados y etiquetas) → #13 (devoluciones y numeración) → #14 (pedidos de venta y olas) → #15 (despachos y estrategias).
-  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos) → #6 (ubicaciones) → #7 (empaques al escanear) → #8 (lotes) → #9 (recepción) → #10 (olas).
-- **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con web #6 y móvil #5; backend #19 con web #7; backend #22 con web #8 y móvil #6.
-- **Variables nuevas:** `STORAGE_DRIVER`/`S3_*` (#14), `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL` (#18). Ver `.env.example`.
-- **Siguiente tarea:** UI de conteos y traslados (web y móvil); 5.3 (reabastecimiento) y 5.4 (notificaciones).
-- **Permiso nuevo para operarios:** desde #28 el rol operario incluye `receiving.execute` por defecto.
-- **Merges bloqueados:** el plugin de Partequipos sigue bloqueando `gh pr merge` aun después de reiniciar la sesión; hay que deshabilitarlo para estos repos o mergear a mano.
-- **Prueba en navegador (Playwright, 2026-10-04):** web #6–#8 cargan sin errores de consola ni de API (usuarios, roles, auditoría, empresa, ubicaciones, stock, producto, invitación, consola de plataforma) y la sesión de soporte entra, muestra el banner y vuelve a la consola. Móvil #5 y #6 sin probar en dispositivo.
+- **Todo mergeado a `main` (2026-10-05):** backend hasta #45, web hasta #18, móvil hasta #11. No quedan ramas abiertas.
+- **CI deshabilitado** a pedido del usuario (`gh workflow disable`); la garantía es la verificación local (lint, typecheck, tests y build) antes de cada commit. Los workflows siguen en el repo.
+- **Datos de demostración:** `npm run prisma:seed` (idempotente) y `npm run db:check` para revisar los invariantes de stock. Usuarios `admin/admin123`, `supervisor/sup123`, `operario/op123`.
+- **Fotos:** con almacenamiento local la API guarda URLs relativas (`/v1/uploads/...`) y cada cliente las completa con su URL de API; `PUBLIC_URL` ya no se usa.
+- **Variables:** `STORAGE_DRIVER`/`S3_*`, `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL`. Ver `.env.example`.
+- **Siguiente tarea:** UI de conteos y traslados (web y móvil); 5.3 (reabastecimiento), 5.4 (notificaciones) y Fase 5.5.
+- **Propuestas a futuro:** F1 (sincronización con SAP Business One), sin fecha.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
