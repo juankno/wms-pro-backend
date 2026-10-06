@@ -17,7 +17,7 @@ export const OUTBOUND_MOVEMENT_TYPES: MovementType[] = [
   MovementType.adjustment_decrease,
 ];
 
-const AVAILABLE = Prisma.sql`("stockFisico" - "stockReservado")`;
+const AVAILABLE = Prisma.sql`("onHand" - "reserved")`;
 
 // Single definition of stock status, based on available units (physical minus reserved).
 export const STOCK_STATUS_CONDITION: Record<StockStatus, Prisma.Sql> = {

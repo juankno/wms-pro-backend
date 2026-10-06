@@ -283,17 +283,17 @@ Authorization: Bearer eyJ...
 
 ### Flujo de stock
 ```
-CREAR PICKING  → valida stockDisponible >= quantity (409 si falla)
-RECOGER ÍTEM   → delta = nuevaQty - anteriorQty → stockReservado += delta
-DESMARCAR ÍTEM → stockReservado -= delta (libera reserva)
-CANCELAR PICKING → stockReservado -= pickedQuantity + genera customer_return
-COMPLETAR PACKING → stockFisico -= packedQty, stockReservado -= packedQty
+CREAR PICKING  → valida available >= quantity (409 si falla)
+RECOGER ÍTEM   → delta = nuevaQty - anteriorQty → reserved += delta
+DESMARCAR ÍTEM → reserved -= delta (libera reserva)
+CANCELAR PICKING → reserved -= pickedQuantity + genera customer_return
+COMPLETAR PACKING → onHand -= packedQty, reserved -= packedQty
                     + genera order_shipment (transacción atómica)
 ```
 
 ### Invariantes de stock
-- `stockDisponible = stockFisico - stockReservado` — siempre
-- `stockFisico >= 0`, `stockReservado >= 0`, `stockDisponible >= 0` — nunca negativos
+- `available = onHand - reserved` — siempre
+- `onHand >= 0`, `reserved >= 0`, `available >= 0` — nunca negativos
 - Cada cambio genera un `StockMovement` **inmutable**
 
 ### Transiciones de estado válidas
@@ -339,4 +339,4 @@ CREATE UNIQUE INDEX ON products(barcode);
 
 ## Concurrencia y transacciones
 
-Las operaciones de stock usan `prisma.$transaction()` con bloqueos a nivel de fila para prevenir condiciones de carrera cuando múltiples operarios trabajan simultáneamente. Un conflicto retorna `409 STOCK_INSUFICIENTE`.
+Las operaciones de stock usan `prisma.$transaction()` con bloqueos a nivel de fila para prevenir condiciones de carrera cuando múltiples operarios trabajan simultáneamente. Un conflicto retorna `409 INSUFFICIENT_STOCK`.

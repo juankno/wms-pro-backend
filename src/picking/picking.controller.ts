@@ -71,7 +71,7 @@ const PICKING_EXAMPLE = {
 const ERR_401 = { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado', requestId: 'req_abc123' };
 const ERR_403 = { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado', requestId: 'req_abc123' };
 const ERR_404 = { error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada', requestId: 'req_abc123' };
-const ERR_409_STOCK = { error: 'STOCK_INSUFICIENTE', message: 'Stock disponible insuficiente para el producto FLT-0001 (disponible: 3, requerido: 10)', requestId: 'req_abc123' };
+const ERR_409_STOCK = { error: 'INSUFFICIENT_STOCK', message: 'Stock disponible insuficiente para el producto FLT-0001 (disponible: 3, requerido: 10)', requestId: 'req_abc123' };
 const ERR_422_STATUS = { error: 'ORDER_INVALID_STATUS', message: 'Transición de estado inválida: completed → in_progress', requestId: 'req_abc123' };
 const ERR_422_VAL = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos', details: [{ field: 'reference', message: 'must not be empty' }], requestId: 'req_abc123' };
 
@@ -150,7 +150,7 @@ Authorization: Bearer eyJ...
     summary: 'Crear orden de picking',
     description: `Crea una nueva orden de picking validando que haya stock disponible para todos los ítems.
 
-Si algún producto no tiene suficiente stock disponible devuelve \`409 STOCK_INSUFICIENTE\` antes de crear nada.
+Si algún producto no tiene suficiente stock disponible devuelve \`409 INSUFFICIENT_STOCK\` antes de crear nada.
 
 **Ejemplo de llamada:**
 \`\`\`http
@@ -294,9 +294,9 @@ Content-Type: application/json
     summary: 'Registrar cantidad recogida de un ítem',
     description: `Actualiza la cantidad recogida de un ítem. El sistema reserva el delta de stock en tiempo real.
 
-- Si \`pickedQuantity\` **aumenta** → \`stockReservado += delta\`
-- Si \`pickedQuantity\` **disminuye** → \`stockReservado -= delta\` (libera parcialmente)
-- Si \`pickedQuantity > stockDisponible\` → \`409 STOCK_INSUFICIENTE\`
+- Si \`pickedQuantity\` **aumenta** → \`reserved += delta\`
+- Si \`pickedQuantity\` **disminuye** → \`reserved -= delta\` (libera parcialmente)
+- Si \`pickedQuantity > available\` → \`409 INSUFFICIENT_STOCK\`
 
 **Ejemplo de llamada:**
 \`\`\`http

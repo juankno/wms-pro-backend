@@ -76,7 +76,7 @@ Todos los endpoints (excepto \`POST /auth/login\` y \`POST /auth/refresh\`) requ
 | \`admin\` | Todo + gestión de usuarios y almacenes |
 
 ## Reglas de stock
-- \`stockDisponible = stockFisico - stockReservado\` — nunca negativo
+- \`available = onHand - reserved\` — nunca negativo
 - El stock se **reserva** al recoger ítems en picking
 - El stock se **descuenta** al completar el packing (transacción atómica)
 - Cada cambio genera un **StockMovement** inmutable
@@ -94,7 +94,7 @@ Todas las listas devuelven:
 | \`AUTH_TOKEN_EXPIRED\` | 401 | Access token expirado |
 | \`AUTH_REFRESH_EXPIRED\` | 401 | Refresh token expirado — hacer login |
 | \`AUTH_UNAUTHORIZED\` | 403 | Rol insuficiente |
-| \`STOCK_INSUFICIENTE\` | 409 | Stock disponible insuficiente |
+| \`INSUFFICIENT_STOCK\` | 409 | Stock disponible insuficiente |
 | \`ORDER_NOT_FOUND\` | 404 | Orden no encontrada |
 | \`PRODUCT_NOT_FOUND\` | 404 | Producto no encontrado |
 | \`WAREHOUSE_NOT_FOUND\` | 404 | Almacén no encontrado |

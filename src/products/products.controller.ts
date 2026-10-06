@@ -49,9 +49,9 @@ const PRODUCT_EXAMPLE = {
     warehouseId: '4f749c36-91a8-4e0f-928f-d8915c2ba8ec',
     location: 'A-01-03',
     minStock: 10,
-    stockFisico: 45,
-    stockReservado: 10,
-    stockDisponible: 35,
+    onHand: 45,
+    reserved: 10,
+    available: 35,
   },
 };
 
@@ -141,17 +141,17 @@ Authorization: Bearer eyJ...
       example: [
         {
           warehouse: { id: 'wh_001', code: 'BOG-01', name: 'Bodega Bogotá', active: true },
-          stockFisico: 100,
-          stockReservado: 20,
-          stockDisponible: 80,
+          onHand: 100,
+          reserved: 20,
+          available: 80,
           minStock: 10,
           location: 'A-01-01',
         },
         {
           warehouse: { id: 'wh_002', code: 'MED-01', name: 'Bodega Medellín', active: true },
-          stockFisico: 30,
-          stockReservado: 0,
-          stockDisponible: 30,
+          onHand: 30,
+          reserved: 0,
+          available: 30,
           minStock: 5,
           location: 'B-02-04',
         },
@@ -178,8 +178,8 @@ Authorization: Bearer eyJ...
       example: {
         ...PRODUCT_EXAMPLE,
         allWarehousesStock: [
-          { warehouse: { id: 'wh_001', code: 'BOG-01', name: 'Bodega Bogotá', active: true }, stockFisico: 45, stockReservado: 10, stockDisponible: 35, minStock: 10, location: 'A-01-03' },
-          { warehouse: { id: 'wh_002', code: 'MED-01', name: 'Bodega Medellín', active: true }, stockFisico: 20, stockReservado: 0, stockDisponible: 20, minStock: 5, location: 'C-03-01' },
+          { warehouse: { id: 'wh_001', code: 'BOG-01', name: 'Bodega Bogotá', active: true }, onHand: 45, reserved: 10, available: 35, minStock: 10, location: 'A-01-03' },
+          { warehouse: { id: 'wh_002', code: 'MED-01', name: 'Bodega Medellín', active: true }, onHand: 20, reserved: 0, available: 20, minStock: 5, location: 'C-03-01' },
         ],
       },
     },

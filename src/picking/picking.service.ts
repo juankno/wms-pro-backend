@@ -101,21 +101,21 @@ export class PickingService {
 
       const shortages = [...requested].flatMap(([productId, quantity]) => {
         const stock = stocks.get(productId);
-        const disponible = stock ? stock.stockFisico - stock.stockReservado : 0;
-        return disponible < quantity ? [{ productId, solicitado: quantity, disponible }] : [];
+        const available = stock ? stock.onHand - stock.reserved : 0;
+        return available < quantity ? [{ productId, requested: quantity, available }] : [];
       });
       if (shortages.length > 0) {
         throw new ConflictException({
-          error: 'STOCK_INSUFICIENTE',
+          error: 'INSUFFICIENT_STOCK',
           message: 'Stock insuficiente para uno o más ítems',
-          items: shortages,
+          details: shortages,
         });
       }
 
       for (const [productId, quantity] of requested) {
         await tx.warehouseStock.update({
           where: { id: stocks.get(productId)!.id },
-          data: { stockReservado: { increment: quantity } },
+          data: { reserved: { increment: quantity } },
         });
       }
 
@@ -328,17 +328,17 @@ export class PickingService {
 
       const stock = stocks.get(item.productId);
       if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
-      const available = stock.stockFisico - stock.stockReservado;
+      const available = stock.onHand - stock.reserved;
       if (delta > available) {
         throw new ConflictException({
-          error: 'STOCK_INSUFICIENTE',
+          error: 'INSUFFICIENT_STOCK',
           message: 'No hay stock disponible para reservar',
           details: [{ productId: item.productId, requested: delta, available }],
         });
       }
 
-      stock.stockReservado += delta;
-      await tx.warehouseStock.update({ where: { id: stock.id }, data: { stockReservado: stock.stockReservado } });
+      stock.reserved += delta;
+      await tx.warehouseStock.update({ where: { id: stock.id }, data: { reserved: stock.reserved } });
       await tx.pickingItem.update({ where: { id: item.id }, data: { reservedQuantity: target(item) } });
     }
   }

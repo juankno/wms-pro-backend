@@ -68,8 +68,8 @@ describe('Picking and packing reservations (integration)', () => {
     productB = b.id;
     await prisma.warehouseStock.createMany({
       data: [
-        { productId: productA, warehouseId, stockFisico: 10 },
-        { productId: productB, warehouseId, stockFisico: 5 },
+        { productId: productA, warehouseId, onHand: 10 },
+        { productId: productB, warehouseId, onHand: 5 },
       ],
     });
   });
@@ -100,7 +100,7 @@ describe('Picking and packing reservations (integration)', () => {
     it('reserves stock on creation and logs the activity in the same transaction', async () => {
       const order = await newPicking([{ productId: productA, quantity: 4 }]);
 
-      expect((await stockOf(productA)).stockReservado).toBe(4);
+      expect((await stockOf(productA)).reserved).toBe(4);
       expect(order.items[0].reservedQuantity).toBe(4);
       expect(await prisma.activityLog.count({ where: { orderId: order.id, action: 'created' } })).toBe(1);
     });
@@ -113,7 +113,7 @@ describe('Picking and packing reservations (integration)', () => {
         ]),
       ).rejects.toBeInstanceOf(ConflictException);
 
-      expect((await stockOf(productA)).stockReservado).toBe(0);
+      expect((await stockOf(productA)).reserved).toBe(0);
     });
 
     it('never oversells under concurrent order creation', async () => {
@@ -122,7 +122,7 @@ describe('Picking and packing reservations (integration)', () => {
       );
 
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
-      expect((await stockOf(productA)).stockReservado).toBe(9);
+      expect((await stockOf(productA)).reserved).toBe(9);
     });
 
     it('refuses to complete an order with nothing picked', async () => {
@@ -148,7 +148,7 @@ describe('Picking and packing reservations (integration)', () => {
       await picking.updateItem(order.id, order.items[0].id, 3, admin);
       await picking.updateStatus(order.id, 'completed', admin);
 
-      expect((await stockOf(productA)).stockReservado).toBe(3);
+      expect((await stockOf(productA)).reserved).toBe(3);
     });
 
     it('releases every reservation on cancellation and on deletion', async () => {
@@ -158,8 +158,8 @@ describe('Picking and packing reservations (integration)', () => {
       await picking.updateStatus(cancelled.id, 'cancelled', admin);
       await picking.delete(deleted.id, admin);
 
-      expect((await stockOf(productA)).stockReservado).toBe(0);
-      expect((await stockOf(productB)).stockReservado).toBe(0);
+      expect((await stockOf(productA)).reserved).toBe(0);
+      expect((await stockOf(productB)).reserved).toBe(0);
     });
 
     it('filters the listing by priority', async () => {
@@ -197,11 +197,11 @@ describe('Picking and packing reservations (integration)', () => {
       await packing.updateStatus(order.id, 'completed', admin);
 
       const stock = await stockOf(productA);
-      expect(stock).toMatchObject({ stockFisico: 8, stockReservado: 0 });
+      expect(stock).toMatchObject({ onHand: 8, reserved: 0 });
 
       const movements = await prisma.stockMovement.findMany({ where: { productId: productA } });
       expect(movements).toHaveLength(1);
-      expect(movements[0]).toMatchObject({ type: 'order_shipment', quantity: 2, stockFisicoAntes: 10, stockFisicoDespues: 8 });
+      expect(movements[0]).toMatchObject({ type: 'order_shipment', quantity: 2, onHandBefore: 10, onHandAfter: 8 });
     });
 
     it('refuses to complete a packing with nothing packed', async () => {
@@ -217,7 +217,7 @@ describe('Picking and packing reservations (integration)', () => {
       const order = await pickAndComplete(4, 4);
       await packing.updateStatus(order.id, 'cancelled', admin);
 
-      expect(await stockOf(productA)).toMatchObject({ stockFisico: 10, stockReservado: 0 });
+      expect(await stockOf(productA)).toMatchObject({ onHand: 10, reserved: 0 });
     });
   });
 });

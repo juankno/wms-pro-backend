@@ -40,7 +40,7 @@ describe('StockService (integration)', () => {
     productId = product.id;
     warehouseA = a.id;
     warehouseB = b.id;
-    await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseA, stockFisico: 5 } });
+    await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseA, onHand: 5 } });
   });
 
   afterEach(async () => {
@@ -61,8 +61,8 @@ describe('StockService (integration)', () => {
         productId, warehouseId: warehouseA, type: 'adjustment_increase', quantity: 3, ...operator,
       });
 
-      expect(stockActual.stockFisico).toBe(8);
-      expect(movement).toMatchObject({ stockFisicoAntes: 5, stockFisicoDespues: 8 });
+      expect(stockActual.onHand).toBe(8);
+      expect(movement).toMatchObject({ onHandBefore: 5, onHandAfter: 8 });
     });
 
     it('rejects a negative adjustment above available stock without changing it', async () => {
@@ -70,7 +70,7 @@ describe('StockService (integration)', () => {
         service.registerMovement({ productId, warehouseId: warehouseA, type: 'adjustment_decrease', quantity: 6, ...operator }),
       ).rejects.toBeInstanceOf(ConflictException);
 
-      expect((await stockOf(warehouseA))?.stockFisico).toBe(5);
+      expect((await stockOf(warehouseA))?.onHand).toBe(5);
     });
 
     it('never oversells under concurrent negative adjustments', async () => {
@@ -81,7 +81,7 @@ describe('StockService (integration)', () => {
       );
 
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(5);
-      expect((await stockOf(warehouseA))?.stockFisico).toBe(0);
+      expect((await stockOf(warehouseA))?.onHand).toBe(0);
     });
   });
 
@@ -97,13 +97,13 @@ describe('StockService (integration)', () => {
         productId, fromWarehouseId: warehouseA, toWarehouseId: warehouseB, quantity: 2, ...operator,
       });
 
-      expect((await stockOf(warehouseA))?.stockFisico).toBe(3);
-      expect((await stockOf(warehouseB))?.stockFisico).toBe(2);
+      expect((await stockOf(warehouseA))?.onHand).toBe(3);
+      expect((await stockOf(warehouseB))?.onHand).toBe(2);
       expect(movements.map((m) => m.type)).toEqual(['transfer_out', 'transfer_in']);
     });
 
     it('preserves total stock under concurrent opposite transfers', async () => {
-      await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseB, stockFisico: 5 } });
+      await prisma.warehouseStock.create({ data: { productId, warehouseId: warehouseB, onHand: 5 } });
 
       const results = await Promise.allSettled(
         Array.from({ length: 6 }, (_, i) =>
@@ -119,7 +119,7 @@ describe('StockService (integration)', () => {
 
       expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
       const [a, b] = await Promise.all([stockOf(warehouseA), stockOf(warehouseB)]);
-      expect(a!.stockFisico + b!.stockFisico).toBe(10);
+      expect(a!.onHand + b!.onHand).toBe(10);
     });
   });
 
@@ -127,7 +127,7 @@ describe('StockService (integration)', () => {
     await expect(
       prisma.warehouseStock.update({
         where: { productId_warehouseId: { productId, warehouseId: warehouseA } },
-        data: { stockFisico: -1 },
+        data: { onHand: -1 },
       }),
     ).rejects.toThrow();
   });

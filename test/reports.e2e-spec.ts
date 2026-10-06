@@ -31,26 +31,26 @@ describe('Product listing and reports (integration)', () => {
     ).id;
 
     const stock = [
-      { name: 'Out', stockFisico: 2, stockReservado: 2, minStock: 1 },
-      { name: 'Low', stockFisico: 3, stockReservado: 0, minStock: 5 },
-      { name: 'Ok', stockFisico: 10, stockReservado: 0, minStock: 2 },
-      { name: 'Unstocked', stockFisico: null, stockReservado: 0, minStock: 0 },
+      { name: 'Out', onHand: 2, reserved: 2, minStock: 1 },
+      { name: 'Low', onHand: 3, reserved: 0, minStock: 5 },
+      { name: 'Ok', onHand: 10, reserved: 0, minStock: 2 },
+      { name: 'Unstocked', onHand: null, reserved: 0, minStock: 0 },
     ];
     for (const [i, s] of stock.entries()) {
       const product = await prisma.product.create({
         data: { code: `R${i}-${suffix}`, name: `${s.name} ${suffix}`, category: 'reports' },
       });
       productIds.push(product.id);
-      if (s.stockFisico !== null) {
+      if (s.onHand !== null) {
         await prisma.warehouseStock.create({
-          data: { productId: product.id, warehouseId, stockFisico: s.stockFisico, stockReservado: s.stockReservado, minStock: s.minStock },
+          data: { productId: product.id, warehouseId, onHand: s.onHand, reserved: s.reserved, minStock: s.minStock },
         });
       }
     }
 
     const movement = (type: MovementType, quantity: number) => ({
       productId: productIds[2], warehouseId, type, quantity, operatorId: userId, operatorName: 'Reporter',
-      stockFisicoAntes: 0, stockFisicoDespues: 0, stockReservadoAntes: 0, stockReservadoDespues: 0,
+      onHandBefore: 0, onHandAfter: 0, reservedBefore: 0, reservedAfter: 0,
     });
     await prisma.stockMovement.createMany({
       data: [
@@ -124,17 +124,17 @@ describe('Product listing and reports (integration)', () => {
     const report = await reports.getStockStatus(warehouseId);
 
     expect(report.summary).toEqual({ total: 3, outOfStock: 1, lowStock: 1, ok: 1 });
-    expect(report.lowStock[0]).toMatchObject({ stockDisponible: 3, minStock: 5 });
+    expect(report.lowStock[0]).toMatchObject({ available: 3, minStock: 5 });
   });
 
   it('classifies adjustments as inbound and outbound movements', async () => {
     const dashboard = await reports.getDashboard(warehouseId);
 
     expect(dashboard.movements).toEqual({
-      entradasHoy: 2,
-      salidasHoy: 1,
-      unidadesEntradasHoy: 10,
-      unidadesSalidasHoy: 3,
+      inboundToday: 2,
+      outboundToday: 1,
+      inboundUnitsToday: 10,
+      outboundUnitsToday: 3,
     });
     expect(dashboard.stockAlerts).toMatchObject({ outOfStock: 1, lowStock: 1, totalReserved: 2 });
   });
