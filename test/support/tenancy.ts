@@ -18,6 +18,7 @@ export async function deleteTestTenant(prisma: PrismaService, tenantId: string) 
   await prisma.$transaction([
     prisma.activityLog.deleteMany({ where: { tenantId } }),
     prisma.auditLog.deleteMany({ where: { tenantId } }),
+    prisma.shipment.deleteMany({ where: { tenantId } }),
     prisma.packingOrder.deleteMany({ where: { tenantId } }),
     prisma.pickingOrder.deleteMany({ where: { tenantId } }),
     prisma.pickingWave.deleteMany({ where: { tenantId } }),
@@ -32,6 +33,7 @@ export async function deleteTestTenant(prisma: PrismaService, tenantId: string) 
     prisma.lot.deleteMany({ where: { tenantId } }),
     prisma.product.deleteMany({ where: { tenantId } }),
     prisma.partner.deleteMany({ where: { tenantId } }),
+    prisma.carrier.deleteMany({ where: { tenantId } }),
     prisma.userInvitation.deleteMany({ where: { tenantId } }),
     prisma.user.deleteMany({ where: { tenantId } }),
     prisma.tenantRole.deleteMany({ where: { tenantId } }),

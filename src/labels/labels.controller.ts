@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString } from 'class-validator';
@@ -62,6 +62,12 @@ export class LabelsController {
   @ApiOperation({ summary: 'Etiquetas de ubicaciones en PDF o ZPL, por ids o por almacén' })
   async locations(@Query() query: LocationLabelsDto, @CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
     return this.render(await this.labels.locations(query, user), query.format ?? 'pdf', 'etiquetas-ubicaciones', res);
+  }
+
+  @Get('packing/:id')
+  @ApiOperation({ summary: 'Etiquetas de envío, una por caja, con la guía como código de barras' })
+  async packing(@Param('id') id: string, @Query() query: LabelFormatDto, @CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
+    return this.render(await this.labels.packing(id, user), query.format ?? 'pdf', 'etiquetas-envio', res);
   }
 
   private async render(labels: LabelContent[], format: LabelFormat, name: string, res: Response) {

@@ -19,6 +19,22 @@ export const locationLabel = (location: { code: string; name: string | null }, w
   barcode: location.code,
 });
 
+// One label per box: client on top, order and box count below, and the tracking number (or the
+// order reference) as barcode so the box can be scanned at dispatch.
+export const shippingLabels = (packing: {
+  reference: string;
+  client: string;
+  boxes: { label: string }[];
+  trackingNumber?: string | null;
+}): LabelContent[] => {
+  const boxes = packing.boxes.length > 0 ? packing.boxes : [{ label: 'Caja' }];
+  return boxes.map((box, index) => ({
+    title: packing.client.slice(0, MAX_SUBTITLE),
+    subtitle: `${packing.reference} · ${box.label} (${index + 1}/${boxes.length})`.slice(0, MAX_SUBTITLE),
+    barcode: packing.trackingNumber || packing.reference,
+  }));
+};
+
 // ^ and ~ start ZPL commands, so they cannot appear inside field data.
 const zplText = (value: string) => value.replace(/[\^~]/g, ' ');
 

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, UnprocessableEntityException } from '@ne
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
-import { LabelContent, locationLabel, productLabel } from './label-content';
+import { LabelContent, locationLabel, productLabel, shippingLabels } from './label-content';
 
 export const MAX_LABELS = 500;
 
@@ -34,6 +34,16 @@ export class LabelsService {
     if (locations.length === 0) throw new NotFoundException({ error: 'LOCATION_NOT_FOUND', message: 'Ubicaciones no encontradas' });
     for (const warehouseId of new Set(locations.map((location) => location.warehouseId))) assertWarehouseAccess(user, warehouseId);
     return locations.map((location) => locationLabel(location, location.warehouse.code));
+  }
+
+  async packing(id: string, user: AuthUser): Promise<LabelContent[]> {
+    const packing = await this.prisma.packingOrder.findUnique({
+      where: { id },
+      include: { boxes: { orderBy: { label: 'asc' } }, shipment: { select: { trackingNumber: true } } },
+    });
+    if (!packing) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de packing no encontrada' });
+    assertWarehouseAccess(user, packing.warehouseId);
+    return shippingLabels({ ...packing, trackingNumber: packing.shipment?.trackingNumber });
   }
 
   private assertCount(count: number) {

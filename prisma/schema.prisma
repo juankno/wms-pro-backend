@@ -76,6 +76,8 @@ model Tenant {
   sequences      Sequence[]
   salesOrders    SalesOrder[]
   pickingWaves   PickingWave[]
+  carriers       Carrier[]
+  shipments      Shipment[]
 
   @@map("tenants")
 }
@@ -106,6 +108,7 @@ model User {
   salesOrders     SalesOrder[]
   createdWaves    PickingWave[]    @relation("WaveCreator")
   assignedWaves   PickingWave[]    @relation("WaveAssignee")
+  shipments       Shipment[]
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -337,6 +340,7 @@ model PackingOrder {
   createdBy    User          @relation("PackingCreator", fields: [createdById], references: [id])
   items        PackingItem[]
   boxes        PackingBox[]
+  shipment     Shipment?
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, reference])
@@ -918,4 +922,52 @@ enum PickingStrategy {
   fefo
   fifo
   lifo
+}
+
+model Carrier {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  name                String
+  // Link to follow a shipment, with {tracking} replaced by the tracking number.
+  trackingUrlTemplate String?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  shipments Shipment[]
+
+  @@unique([tenantId, name])
+  @@map("carriers")
+}
+
+enum ShipmentStatus {
+  shipped
+  delivered
+}
+
+// Dispatch of a completed packing: carrier, tracking and proof of delivery.
+model Shipment {
+  id             String         @id @default(uuid())
+  tenantId       String
+  packingOrderId String         @unique
+  carrierId      String?
+  carrierName    String?
+  trackingNumber String?
+  status         ShipmentStatus @default(shipped)
+  shippedAt      DateTime       @default(now())
+  shippedById    String
+  deliveredAt    DateTime?
+  receivedBy     String?
+  proofPhotoUrl  String?
+  notes          String?
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  packingOrder PackingOrder @relation(fields: [packingOrderId], references: [id], onDelete: Cascade)
+  carrier      Carrier?     @relation(fields: [carrierId], references: [id])
+  shippedBy    User         @relation(fields: [shippedById], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, trackingNumber])
+  @@map("shipments")
 }
