@@ -26,6 +26,7 @@ export async function deleteTestTenant(prisma: PrismaService, tenantId: string) 
     prisma.userInvitation.deleteMany({ where: { tenantId } }),
     prisma.user.deleteMany({ where: { tenantId } }),
     prisma.tenantRole.deleteMany({ where: { tenantId } }),
+    prisma.location.deleteMany({ where: { tenantId } }),
     prisma.warehouse.deleteMany({ where: { tenantId } }),
     prisma.tenant.delete({ where: { id: tenantId } }),
   ]);
