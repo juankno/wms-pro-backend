@@ -161,7 +161,7 @@ export class ProductsService {
       where: { id },
       data: { photos: product.photos.filter((p) => p !== photoUrl) },
     });
-    this.uploads.deleteFile(photoUrl);
+    await this.uploads.deleteFile(photoUrl);
     return updated;
   }
 

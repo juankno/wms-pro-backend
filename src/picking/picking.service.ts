@@ -281,7 +281,7 @@ export class PickingService {
       );
       return result;
     });
-    this.uploads.deleteFile(photoUrl);
+    await this.uploads.deleteFile(photoUrl);
     return updated;
   }
 

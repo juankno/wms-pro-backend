@@ -1,67 +1,57 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import * as path from 'path';
-import * as fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+import { requireTenantId } from '../tenancy/tenant-context';
+import { OBJECT_STORAGE, type ObjectStorage } from './storage/object-storage';
 
-const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MIME_TO_EXT: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-};
+const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp']);
+const MAX_DIMENSION = 1600;
+const WEBP_QUALITY = 82;
+
+const tenantPrefix = (tenantId: string) => `tenants/${tenantId}/`;
 
 @Injectable()
 export class UploadsService {
-  private readonly uploadDir = process.env.UPLOAD_DIR ?? './uploads';
+  private readonly logger = new Logger(UploadsService.name);
 
-  ensureDir() {
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
+  constructor(@Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage) {}
+
+  // Re-encoding to WebP validates the real content, normalizes orientation and drops EXIF (e.g. GPS).
+  async saveFile(buffer: Buffer): Promise<{ url: string; id: string }> {
+    const image = await this.toWebp(buffer);
+    const id = randomUUID().replace(/-/g, '');
+    const key = `${tenantPrefix(requireTenantId())}photos/${id}.webp`;
+
+    await this.storage.put(key, image, 'image/webp');
+    return { id, url: this.storage.publicUrl(key) };
   }
 
-  getPublicUrl(filename: string): string {
-    const prefix = process.env.API_PREFIX ?? 'v1';
-    const base =
-      process.env.PUBLIC_URL ??
-      `http://localhost:${process.env.PORT ?? 3000}/${prefix}`;
-    return `${base}/uploads/${filename}`;
-  }
-
-  deleteFile(url: string): void {
+  // Only files inside the current tenant prefix can be removed.
+  async deleteFile(url: string): Promise<void> {
+    const key = this.storage.keyFromUrl(url);
+    if (!key?.startsWith(tenantPrefix(requireTenantId()))) return;
     try {
-      const filename = url.split('/').pop()?.split('?')[0];
-      if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) return;
-      const filepath = path.resolve(this.uploadDir, filename);
-      if (!filepath.startsWith(path.resolve(this.uploadDir) + path.sep)) return;
-      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
-    } catch {
-      // No-op: borrado de archivo es no-crítico
+      await this.storage.delete(key);
+    } catch (error) {
+      this.logger.warn(`Could not delete ${key}: ${String(error)}`);
     }
   }
 
-  async saveFile(
-    buffer: Buffer,
-    _originalname: string,
-    mimetype: string,
-  ): Promise<{ url: string; id: string }> {
-    if (!ALLOWED_MIMES.has(mimetype)) {
+  private async toWebp(buffer: Buffer): Promise<Buffer> {
+    try {
+      const pipeline = sharp(buffer, { failOn: 'error' });
+      const { format } = await pipeline.metadata();
+      if (!format || !ALLOWED_FORMATS.has(format)) throw new Error(`Unsupported format: ${format}`);
+      return await pipeline
+        .rotate()
+        .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer();
+    } catch {
       throw new BadRequestException({
         error: 'VALIDATION_ERROR',
-        message: 'Formato de imagen no permitido. Use JPEG, PNG o WebP.',
+        message: 'El archivo no es una imagen válida. Use JPEG, PNG o WebP.',
       });
     }
-
-    this.ensureDir();
-
-    // Derive extension from MIME only — never trust originalname (path traversal prevention)
-    const ext = MIME_TO_EXT[mimetype] ?? '.jpg';
-    const id = `photo_${uuidv4().replace(/-/g, '')}`;
-    const filename = `${id}${ext}`;
-    const filepath = path.join(this.uploadDir, filename);
-
-    await fs.promises.writeFile(filepath, buffer);
-
-    return { id, url: this.getPublicUrl(filename) };
   }
 }

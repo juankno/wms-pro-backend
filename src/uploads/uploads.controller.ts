@@ -63,6 +63,6 @@ export class UploadsController {
   )
   async uploadPhoto(@UploadedFile() file: MulterFile) {
     if (!file) throw new BadRequestException({ error: 'VALIDATION_ERROR', message: 'No se recibió ningún archivo' });
-    return this.uploadsService.saveFile(file.buffer, file.originalname, file.mimetype);
+    return this.uploadsService.saveFile(file.buffer);
   }
 }
