@@ -101,6 +101,13 @@ Authorization: Bearer eyJ...
     return this.productsService.findAll(q, stockWarehouseFor(user, q.warehouseId));
   }
 
+  @Get('categories')
+  @ApiOperation({ summary: 'Categorías de productos activos', description: 'Lista ordenada y sin duplicados.' })
+  @ApiResponse({ status: 200, schema: { example: ['Filtros', 'Lubricantes'] } })
+  findCategories() {
+    return this.productsService.findCategories();
+  }
+
   @Get('barcode/:barcode')
   @ApiOperation({
     summary: 'Buscar por código de barras',
