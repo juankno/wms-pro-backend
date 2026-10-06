@@ -40,6 +40,13 @@ export class CreateMovementDto {
   @IsNotEmpty()
   warehouseId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Location that receives (increases) or gives (decreases) the units; decreases without it take from locations in pick sequence',
+  })
+  @IsOptional()
+  @IsString()
+  locationId?: string;
+
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()
   @IsString()
@@ -53,6 +60,31 @@ export class TransferDto {
   @ApiProperty() @IsString() @IsNotEmpty() toWarehouseId!: string;
   @ApiProperty({ minimum: 1 }) @IsInt() @IsPositive() quantity!: number;
   @ApiPropertyOptional({ maxLength: 500 }) @IsOptional() @IsString() @MaxLength(500) notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() fromLocationId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() toLocationId?: string;
+}
+
+export class RelocateDto {
+  @ApiProperty() @IsString() @IsNotEmpty() productId!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() warehouseId!: string;
+  @ApiPropertyOptional({ description: 'Omit to take stock not assigned to any location' })
+  @IsOptional()
+  @IsString()
+  fromLocationId?: string;
+
+  @ApiPropertyOptional({ description: 'Omit to leave the units without a location' })
+  @IsOptional()
+  @IsString()
+  toLocationId?: string;
+
+  @ApiProperty({ minimum: 1 }) @IsInt() @IsPositive() quantity!: number;
+  @ApiPropertyOptional({ maxLength: 500 }) @IsOptional() @IsString() @MaxLength(500) notes?: string;
+}
+
+export class LocationStockQueryDto extends PaginationDto {
+  @ApiProperty() @IsString() @IsNotEmpty() warehouseId!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() productId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() locationId?: string;
 }
 
 export class UpdateStockSettingsDto {

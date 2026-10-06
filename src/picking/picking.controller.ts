@@ -292,11 +292,11 @@ Content-Type: application/json
   @Patch(':id/items/:itemId')
   @ApiOperation({
     summary: 'Registrar cantidad recogida de un ítem',
-    description: `Actualiza la cantidad recogida de un ítem. El sistema reserva el delta de stock en tiempo real.
+    description: `Actualiza la cantidad recogida de un ítem. La reserva se hizo al crear la orden.
 
-- Si \`pickedQuantity\` **aumenta** → \`reserved += delta\`
-- Si \`pickedQuantity\` **disminuye** → \`reserved -= delta\` (libera parcialmente)
-- Si \`pickedQuantity > available\` → \`409 INSUFFICIENT_STOCK\`
+- Si \`pickedQuantity\` **aumenta**, las unidades salen de \`locationId\` o, si no se indica, de las ubicaciones en orden de recorrido y luego del stock sin ubicación.
+- Si **disminuye**, las unidades vuelven a \`locationId\` o quedan sin ubicación.
+- Las unidades recogidas quedan en \`picked\` hasta que el packing se completa o se cancela.
 
 **Ejemplo de llamada:**
 \`\`\`http
@@ -320,6 +320,6 @@ Content-Type: application/json
     @Body() body: UpdatePickingItemDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user);
+    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user, body.locationId);
   }
 }
