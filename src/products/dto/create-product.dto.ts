@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty()
@@ -44,4 +44,20 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+}
+
+export class UpdateProductDto extends PartialType(CreateProductDto) {
+  @ApiPropertyOptional({ description: 'Deactivating requires products.delete' }) @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class AddBarcodeDto {
+  @ApiProperty({ example: '17891234560008' }) @IsString() @IsNotEmpty() @MaxLength(50) code!: string;
+
+  @ApiPropertyOptional({ default: 1, description: 'Base units counted per scan, e.g. 12 for a box' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+
+  @ApiPropertyOptional({ example: 'Caja x12' }) @IsOptional() @IsString() @MaxLength(50) label?: string;
 }

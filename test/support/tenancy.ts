@@ -23,6 +23,7 @@ export async function deleteTestTenant(prisma: PrismaService, tenantId: string) 
     prisma.stockMovement.deleteMany({ where: { tenantId } }),
     prisma.locationStock.deleteMany({ where: { tenantId } }),
     prisma.warehouseStock.deleteMany({ where: { tenantId } }),
+    prisma.productBarcode.deleteMany({ where: { tenantId } }),
     prisma.product.deleteMany({ where: { tenantId } }),
     prisma.partner.deleteMany({ where: { tenantId } }),
     prisma.userInvitation.deleteMany({ where: { tenantId } }),
