@@ -8,7 +8,7 @@ import { requireTenantId } from '../tenancy/tenant-context';
 import { CreateLocationDto, GenerateLocationsDto, LocationQueryDto, UpdateLocationDto } from './dto/location.dto';
 import { expandLevels, GeneratedLocation } from './location-generator';
 
-const STORABLE_TYPES = new Set<LocationType>([LocationType.bin, LocationType.dock, LocationType.staging]);
+export const STORABLE_TYPES = new Set<LocationType>([LocationType.bin, LocationType.dock, LocationType.staging]);
 const MAX_DEPTH = 20;
 const GENERATION_TIMEOUT_MS = 30_000;
 
