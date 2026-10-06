@@ -25,6 +25,8 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'sequence',
   'salesOrder',
   'pickingWave',
+  'carrier',
+  'shipment',
 ]);
 
 const FILTERED_OPERATIONS = new Set([

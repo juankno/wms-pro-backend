@@ -82,7 +82,13 @@ export class PickingService {
     const [data, total] = await Promise.all([
       this.prisma.pickingOrder.findMany({
         where,
-        include: { items: true, assignedTo: { select: { id: true, name: true } } },
+        include: {
+          items: true,
+          assignedTo: { select: { id: true, name: true } },
+          warehouse: { select: { id: true, code: true, name: true } },
+          salesOrder: { select: { id: true, reference: true } },
+          wave: { select: { id: true, reference: true } },
+        },
         orderBy: { createdAt: 'desc' },
         ...paginate(opts.page, opts.limit),
       }),
@@ -99,6 +105,9 @@ export class PickingService {
         items: true,
         assignedTo: { select: { id: true, name: true } },
         customer: { select: { id: true, code: true, name: true } },
+        warehouse: { select: { id: true, code: true, name: true } },
+        salesOrder: { select: { id: true, reference: true } },
+        wave: { select: { id: true, reference: true } },
       },
     });
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
