@@ -170,7 +170,6 @@ export class WavesService {
         await this.prisma.pickingOrder.update({ where: { id: order.id }, data: { waveId: null } });
         continue;
       }
-      if (order.status === OrderStatus.pending) await this.picking.updateStatus(order.id, OrderStatus.in_progress, user);
       await this.picking.updateStatus(order.id, OrderStatus.completed, user);
     }
     await this.prisma.pickingWave.update({ where: { id }, data: { status: WaveStatus.completed, completedAt: new Date() } });

@@ -153,22 +153,26 @@ export class PackingService {
   async updateStatus(id: string, status: OrderTargetStatus, user: AuthUser) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, id, user);
-      if (!ALLOWED_TRANSITIONS[order.status]?.includes(status)) {
-        throw new UnprocessableEntityException({
-          error: 'ORDER_INVALID_STATUS',
-          message: `Transición de estado inválida: ${order.status} → ${status}`,
-        });
+      if (status === OrderStatus.in_progress && order.status === OrderStatus.in_progress) {
+        return tx.packingOrder.findUniqueOrThrow({ where: { id }, include: { items: true, boxes: true } });
       }
-
-      if (status === OrderStatus.completed) {
+      if (status === OrderStatus.completed && EDITABLE_STATUSES.includes(order.status)) {
         if (!order.items.some((i) => i.packedQuantity > 0)) {
           throw new UnprocessableEntityException({
             error: 'PACKING_EMPTY',
             message: 'No se puede completar un packing sin ítems empacados',
           });
         }
-        await this.consumeReservations(tx, order, user);
       }
+      const current = status === OrderStatus.completed ? await this.startIfPending(tx, order, user) : order.status;
+      if (!ALLOWED_TRANSITIONS[current]?.includes(status)) {
+        throw new UnprocessableEntityException({
+          error: 'ORDER_INVALID_STATUS',
+          message: `Transición de estado inválida: ${current} → ${status}`,
+        });
+      }
+
+      if (status === OrderStatus.completed) await this.consumeReservations(tx, order, user);
 
       if (status === OrderStatus.cancelled) {
         await this.consumeReservations(tx, { ...order, items: [] }, user);
@@ -214,6 +218,7 @@ export class PackingService {
           message: 'La cantidad empacada no puede superar la cantidad total del ítem',
         });
       }
+      if (packedQuantity !== item.packedQuantity) await this.startIfPending(tx, order, user);
       return tx.packingItem.update({ where: { id: itemId }, data: { packedQuantity } });
     });
   }
@@ -295,6 +300,25 @@ export class PackingService {
     assertWarehouseAccess(user, order.warehouseId);
     const { pickingOrder, ...rest } = order;
     return { ...rest, pickingItems: pickingOrder.items, salesOrderId: pickingOrder.salesOrderId };
+  }
+
+  // Recording progress starts a pending order, so clients without an explicit start step can complete it.
+  private async startIfPending(tx: Prisma.TransactionClient, order: LockedPackingOrder, user: AuthUser) {
+    if (order.status !== OrderStatus.pending) return order.status;
+    await tx.packingOrder.update({ where: { id: order.id }, data: { status: OrderStatus.in_progress } });
+    await this.activity.log(
+      {
+        orderId: order.id,
+        orderType: 'packing',
+        action: 'started',
+        detail: 'Packing in_progress',
+        operator: user.name,
+        userId: user.id,
+        warehouseId: order.warehouseId,
+      },
+      tx,
+    );
+    return OrderStatus.in_progress;
   }
 
   private assertEditable(order: PackingOrder) {

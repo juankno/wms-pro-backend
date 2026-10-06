@@ -132,6 +132,23 @@ describe('Picking and packing reservations (integration)', () => {
       );
     });
 
+    it('starts a pending order when units are picked so it can be completed directly', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 2 }]);
+      await picking.updateItem(order.id, order.items[0].id, 2, admin);
+
+      expect((await picking.findById(order.id, admin)).status).toBe('in_progress');
+      await expect(picking.updateStatus(order.id, 'in_progress', admin)).resolves.toMatchObject({ status: 'in_progress' });
+      await expect(picking.updateStatus(order.id, 'completed', admin)).resolves.toMatchObject({ status: 'completed' });
+    });
+
+    it('explains that a pending order with nothing picked cannot be completed', async () => {
+      const order = await newPicking([{ productId: productA, quantity: 2 }]);
+
+      await expect(picking.updateStatus(order.id, 'completed', admin)).rejects.toMatchObject({
+        response: { error: 'PICKING_EMPTY' },
+      });
+    });
+
     it('rejects picking more than requested', async () => {
       const order = await newPicking([{ productId: productA, quantity: 2 }]);
 
@@ -200,6 +217,24 @@ describe('Picking and packing reservations (integration)', () => {
       const movements = await prisma.stockMovement.findMany({ where: { productId: productA } });
       expect(movements).toHaveLength(1);
       expect(movements[0]).toMatchObject({ type: 'order_shipment', quantity: 2, onHandBefore: 10, onHandAfter: 8 });
+    });
+
+    it('completes a packing that was packed without an explicit start', async () => {
+      const order = await pickAndComplete(4, 3);
+      await packing.updateItem(order.id, order.items[0].id, 2, admin);
+
+      expect((await packing.findById(order.id, admin)).status).toBe('in_progress');
+      await packing.updateStatus(order.id, 'completed', admin);
+      expect(await stockOf(productA)).toMatchObject({ onHand: 8, reserved: 0 });
+    });
+
+    it('completes a pending packing that already has packed units', async () => {
+      const order = await pickAndComplete(2, 2);
+      await prisma.packingItem.update({ where: { id: order.items[0].id }, data: { packedQuantity: 2 } });
+
+      await expect(packing.updateStatus(order.id, 'completed', admin)).resolves.toMatchObject({ status: 'completed' });
+      const actions = await prisma.activityLog.findMany({ where: { orderId: order.id } });
+      expect(actions.map((a) => a.action)).toEqual(expect.arrayContaining(['started', 'stock_confirmed']));
     });
 
     it('refuses to complete a packing with nothing packed', async () => {
