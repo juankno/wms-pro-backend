@@ -15,8 +15,9 @@ import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
 import { OrderTargetStatus } from '../picking/dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { returnPickedLots } from '../stock/lot-stock';
+import { applySalesOrderProgress } from '../sales/sales-order-progress';
 
-type LockedPackingOrder = PackingOrder & { items: PackingItem[]; pickingItems: PickingItem[] };
+type LockedPackingOrder = PackingOrder & { items: PackingItem[]; pickingItems: PickingItem[]; salesOrderId: string | null };
 
 const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   pending: [OrderStatus.in_progress, OrderStatus.cancelled],
@@ -293,7 +294,7 @@ export class PackingService {
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de packing no encontrada' });
     assertWarehouseAccess(user, order.warehouseId);
     const { pickingOrder, ...rest } = order;
-    return { ...rest, pickingItems: pickingOrder.items };
+    return { ...rest, pickingItems: pickingOrder.items, salesOrderId: pickingOrder.salesOrderId };
   }
 
   private assertEditable(order: PackingOrder) {
@@ -379,5 +380,20 @@ export class PackingService {
       where: { pickingOrderId: order.pickingOrderId },
       data: { reservedQuantity: 0 },
     });
+
+    // The sales order counts what shipped; what did not ship can be released again.
+    if (order.salesOrderId) {
+      const requested = sumByProduct(order.pickingItems, (item) => item.quantity);
+      await applySalesOrderProgress(
+        tx,
+        order.salesOrderId,
+        new Map(
+          [...requested].map(([productId, quantity]) => {
+            const sent = shipped.get(productId) ?? 0;
+            return [productId, { released: -(quantity - sent), shipped: sent }];
+          }),
+        ),
+      );
+    }
   }
 }

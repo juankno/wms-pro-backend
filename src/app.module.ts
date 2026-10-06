@@ -33,6 +33,7 @@ import { ReceiptsModule } from './receipts/receipts.module';
 import { LabelsModule } from './labels/labels.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { SequencesModule } from './sequences/sequences.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { SequencesModule } from './sequences/sequences.module';
     LabelsModule,
     CustomFieldsModule,
     SequencesModule,
+    SalesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
