@@ -203,22 +203,26 @@ export class PickingService {
   async updateStatus(id: string, status: OrderTargetStatus, user: AuthUser) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, id, user);
-      if (!ALLOWED_TRANSITIONS[order.status]?.includes(status)) {
-        throw new UnprocessableEntityException({
-          error: 'ORDER_INVALID_STATUS',
-          message: `No se puede pasar de ${order.status} a ${status}`,
-        });
+      if (status === OrderStatus.in_progress && order.status === OrderStatus.in_progress) {
+        return tx.pickingOrder.findUniqueOrThrow({ where: { id }, include: { items: true } });
       }
-
-      if (status === OrderStatus.completed) {
+      if (status === OrderStatus.completed && EDITABLE_STATUSES.includes(order.status)) {
         if (!order.items.some((i) => i.pickedQuantity > 0)) {
           throw new UnprocessableEntityException({
             error: 'PICKING_EMPTY',
             message: 'No se puede completar un picking sin ítems recogidos',
           });
         }
-        await this.settleReservations(tx, order, (item) => item.pickedQuantity);
       }
+      const current = status === OrderStatus.completed ? await this.startIfPending(tx, order, user) : order.status;
+      if (!ALLOWED_TRANSITIONS[current]?.includes(status)) {
+        throw new UnprocessableEntityException({
+          error: 'ORDER_INVALID_STATUS',
+          message: `No se puede pasar de ${current} a ${status}`,
+        });
+      }
+
+      if (status === OrderStatus.completed) await this.settleReservations(tx, order, (item) => item.pickedQuantity);
 
       if (status === OrderStatus.cancelled) {
         await this.releasePicked(tx, order);
@@ -287,7 +291,10 @@ export class PickingService {
     }
 
     const delta = pickedQuantity - item.pickedQuantity;
-    if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId, lotId);
+    if (delta !== 0) {
+      await this.startIfPending(tx, order, user);
+      await this.movePickedUnits(tx, order, item, delta, user, locationId, lotId);
+    }
 
     const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
     await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
@@ -353,6 +360,25 @@ export class PickingService {
       await this.returnToSalesOrder(tx, order);
       return tx.pickingOrder.delete({ where: { id } });
     });
+  }
+
+  // Recording progress starts a pending order, so clients without an explicit start step can complete it.
+  private async startIfPending(tx: Prisma.TransactionClient, order: LockedPickingOrder, user: AuthUser) {
+    if (order.status !== OrderStatus.pending) return order.status;
+    await tx.pickingOrder.update({ where: { id: order.id }, data: { status: OrderStatus.in_progress } });
+    await this.activity.log(
+      {
+        orderId: order.id,
+        orderType: 'picking',
+        action: 'started',
+        detail: 'Orden in_progress',
+        operator: user.name,
+        userId: user.id,
+        warehouseId: order.warehouseId,
+      },
+      tx,
+    );
+    return OrderStatus.in_progress;
   }
 
   private async lockOrder(tx: Prisma.TransactionClient, id: string, user: AuthUser): Promise<LockedPickingOrder> {
