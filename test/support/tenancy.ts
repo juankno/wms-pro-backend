@@ -27,6 +27,7 @@ export async function deleteTestTenant(prisma: PrismaService, tenantId: string) 
     prisma.purchaseOrder.deleteMany({ where: { tenantId } }),
     prisma.stockMovement.deleteMany({ where: { tenantId } }),
     prisma.cycleCount.deleteMany({ where: { tenantId } }),
+    prisma.stockTransfer.deleteMany({ where: { tenantId } }),
     prisma.locationStock.deleteMany({ where: { tenantId } }),
     prisma.lotStock.deleteMany({ where: { tenantId } }),
     prisma.warehouseStock.deleteMany({ where: { tenantId } }),

@@ -29,6 +29,7 @@ const TENANT_TABLES = [
   'carriers',
   'shipments',
   'cycle_counts',
+  'stock_transfers',
 ];
 const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;
