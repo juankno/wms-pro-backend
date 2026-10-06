@@ -16,6 +16,7 @@ const TENANT_TABLES = [
   'user_invitations',
   'locations',
   'location_stock',
+  'partners',
 ];
 const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;

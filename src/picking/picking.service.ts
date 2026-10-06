@@ -80,7 +80,11 @@ export class PickingService {
   async findById(id: string, user: AuthUser) {
     const order = await this.prisma.pickingOrder.findUnique({
       where: { id },
-      include: { items: true, assignedTo: { select: { id: true, name: true } } },
+      include: {
+        items: true,
+        assignedTo: { select: { id: true, name: true } },
+        customer: { select: { id: true, code: true, name: true } },
+      },
     });
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
     assertWarehouseAccess(user, order.warehouseId);
@@ -90,7 +94,8 @@ export class PickingService {
   async create(
     data: {
       reference: string;
-      client: string;
+      client?: string;
+      customerId?: string;
       warehouseId: string;
       priority?: Priority;
       assignedToId?: string;
@@ -101,6 +106,7 @@ export class PickingService {
   ) {
     await this.planLimits.assertCanCreate('ordersPerMonth');
     return this.prisma.$transaction(async (tx) => {
+      const client = await this.resolveClient(tx, data.client, data.customerId);
       const requested = sumByProduct(data.items, (i) => i.quantity);
       const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);
 
@@ -132,7 +138,8 @@ export class PickingService {
         data: {
           tenantId: requireTenantId(),
           reference: data.reference,
-          client: data.client,
+          client: client.name,
+          customerId: client.customerId,
           warehouseId: data.warehouseId,
           priority: data.priority ?? Priority.medium,
           assignedToId: data.assignedToId,
@@ -373,6 +380,20 @@ export class PickingService {
         data: { picked: Math.max(0, stock.picked - quantity) },
       });
     }
+  }
+
+  private async resolveClient(tx: Prisma.TransactionClient, client?: string, customerId?: string) {
+    if (customerId) {
+      const customer = await tx.partner.findUnique({ where: { id: customerId } });
+      if (!customer?.active || !customer.isCustomer) {
+        throw new NotFoundException({ error: 'CUSTOMER_NOT_FOUND', message: 'Cliente no encontrado o inactivo' });
+      }
+      return { name: client ?? customer.name, customerId };
+    }
+    if (!client) {
+      throw new UnprocessableEntityException({ error: 'CLIENT_REQUIRED', message: 'Indica el cliente de la orden' });
+    }
+    return { name: client, customerId: undefined };
   }
 
   private assertEditable(order: PickingOrder) {
