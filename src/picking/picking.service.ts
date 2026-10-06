@@ -17,6 +17,7 @@ import { OrderTargetStatus } from './dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { PlanLimitsService } from '../tenancy/plan-limits.service';
 import { recordPickedLots, returnPickedLots, takeFromLots } from '../stock/lot-stock';
+import { nextReference } from '../sequences/sequence';
 
 type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
 
@@ -94,7 +95,7 @@ export class PickingService {
 
   async create(
     data: {
-      reference: string;
+      reference?: string;
       client?: string;
       customerId?: string;
       warehouseId: string;
@@ -108,6 +109,9 @@ export class PickingService {
     await this.planLimits.assertCanCreate('ordersPerMonth');
     return this.prisma.$transaction(async (tx) => {
       const client = await this.resolveClient(tx, data.client, data.customerId);
+      const reference =
+        data.reference ??
+        (await nextReference(tx, 'picking', async (candidate) => !!(await tx.pickingOrder.findFirst({ where: { reference: candidate } }))));
       const requested = sumByProduct(data.items, (i) => i.quantity);
       const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);
 
@@ -138,7 +142,7 @@ export class PickingService {
       const order = await tx.pickingOrder.create({
         data: {
           tenantId: requireTenantId(),
-          reference: data.reference,
+          reference,
           client: client.name,
           customerId: client.customerId,
           warehouseId: data.warehouseId,

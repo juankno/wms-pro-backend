@@ -84,7 +84,7 @@ export class PackingService {
   }
 
   async create(
-    data: { pickingOrderId: string; reference: string; assignedToId?: string; notes?: string },
+    data: { pickingOrderId: string; reference?: string; assignedToId?: string; notes?: string },
     user: AuthUser,
   ) {
     return this.prisma.$transaction(async (tx) => {
@@ -110,7 +110,7 @@ export class PackingService {
         data: {
           tenantId: requireTenantId(),
           pickingOrderId: data.pickingOrderId,
-          reference: data.reference,
+          reference: data.reference ?? picking.reference,
           client: picking.client,
           warehouseId: picking.warehouseId,
           assignedToId: data.assignedToId,

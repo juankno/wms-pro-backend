@@ -6,6 +6,7 @@ import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { CreatePurchaseOrderDto, PurchaseOrderItemDto, UpdatePurchaseOrderDto } from './dto/purchase-order.dto';
+import { nextReference } from '../sequences/sequence';
 
 type Tx = Prisma.TransactionClient;
 
@@ -65,10 +66,13 @@ export class PurchaseOrdersService {
       await this.assertSupplier(tx, dto.supplierId);
       await this.assertWarehouse(tx, dto.warehouseId);
       await this.assertItems(tx, dto.items);
+      const reference =
+        dto.reference ??
+        (await nextReference(tx, 'purchase', async (candidate) => !!(await tx.purchaseOrder.findFirst({ where: { reference: candidate } }))));
       return tx.purchaseOrder.create({
         data: {
           tenantId: requireTenantId(),
-          reference: dto.reference,
+          reference,
           supplierId: dto.supplierId,
           warehouseId: dto.warehouseId,
           expectedAt: dto.expectedAt ? new Date(dto.expectedAt) : undefined,

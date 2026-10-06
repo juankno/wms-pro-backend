@@ -4,7 +4,12 @@ import { ORDER_TARGET_STATUSES, OrderTargetStatus } from '../../picking/dto/crea
 
 export class CreatePackingDto {
   @ApiProperty() @IsString() @IsNotEmpty() pickingOrderId!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50) reference!: string;
+  @ApiPropertyOptional({ description: 'Defaults to the picking reference' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  reference?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() assignedToId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string;
 }

@@ -38,7 +38,7 @@ async function bootstrap() {
     origin: allowedOrigins?.length ? allowedOrigins : false,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
-    exposedHeaders: ['X-Request-Id', 'Retry-After'],
+    exposedHeaders: ['X-Request-Id', 'Retry-After', 'Content-Disposition'],
   });
 
   const prefix = process.env.API_PREFIX ?? 'v1';

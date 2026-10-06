@@ -23,7 +23,12 @@ export class PurchaseOrderItemDto {
 }
 
 export class CreatePurchaseOrderDto {
-  @ApiProperty({ example: 'OC-2026-001' }) @IsString() @IsNotEmpty() @MaxLength(50) reference!: string;
+  @ApiPropertyOptional({ example: 'OC-2026-001', description: 'Generated from the tenant sequence when omitted' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  reference?: string;
   @ApiProperty({ description: 'Active partner flagged as supplier' }) @IsString() @IsNotEmpty() supplierId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() warehouseId!: string;
   @ApiPropertyOptional({ example: '2026-10-20' }) @IsOptional() @IsDateString() expectedAt?: string;
