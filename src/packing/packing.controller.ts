@@ -20,11 +20,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OrderStatus, Role } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { PackingService } from './packing.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { OrdersQueryDto } from '../common/dto/orders-query.dto';
@@ -37,6 +36,7 @@ import {
   UpdatePackingItemDto,
   UpdatePackingStatusDto,
 } from './dto/create-packing.dto';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 const PACKING_ITEM_EXAMPLE = {
   id: 'pki_001',
@@ -87,7 +87,7 @@ const ERR_409_PICKING = { error: 'ORDER_INVALID_STATUS', message: 'Ya existe un 
 
 @ApiTags('packing')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('packing')
 export class PackingController {
   constructor(private packingService: PackingService) {}
@@ -209,7 +209,7 @@ Content-Type: application/json
   }
 
   @Delete(':id')
-  @Roles(Role.supervisor)
+  @RequirePermissions('orders.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar orden de packing',

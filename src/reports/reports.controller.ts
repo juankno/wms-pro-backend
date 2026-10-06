@@ -6,23 +6,22 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { scopeWarehouseFilter } from '../common/utils/warehouse-scope';
 import { ReportQueryDto } from './dto/report-query.dto';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 const ERR_401 = { error: 'AUTH_TOKEN_EXPIRED', message: 'Token inválido o expirado', requestId: 'req_abc123' };
 const ERR_403 = { error: 'AUTH_UNAUTHORIZED', message: 'Acceso denegado', requestId: 'req_abc123' };
 
 @ApiTags('reports')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.supervisor)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('reports.read')
 @Controller('reports')
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}

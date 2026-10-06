@@ -1,10 +1,11 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { Role } from '@prisma/client';
 import { AuthUser } from '../types/request-with-user.interface';
 
-// Admins reach every warehouse; other roles only their assigned one (none if unassigned).
+// Users with warehouses.all reach every warehouse; the rest only their assigned one (none if unassigned).
+const canAccessAllWarehouses = (user: AuthUser) => user.permissions.includes('warehouses.all');
+
 export function assertWarehouseAccess(user: AuthUser, warehouseId: string): void {
-  if (user.role === Role.admin) return;
+  if (canAccessAllWarehouses(user)) return;
   if (!user.warehouseId || user.warehouseId !== warehouseId) {
     throw new ForbiddenException({
       error: 'WAREHOUSE_FORBIDDEN',
@@ -26,7 +27,7 @@ export function resolveWarehouseId(user: AuthUser, requested?: string): string {
 }
 
 export function scopeWarehouseFilter(user: AuthUser, requested?: string): string | undefined {
-  if (user.role === Role.admin) return requested;
+  if (canAccessAllWarehouses(user)) return requested;
   return resolveWarehouseId(user, requested);
 }
 

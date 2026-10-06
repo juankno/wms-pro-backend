@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { authConfig } from '../config/env';
 import { LoginDto } from './dto/login.dto';
+import { effectivePermissions } from './permissions';
 
 // Compared when the user does not exist so response time does not reveal valid usernames.
 const TIMING_EQUALIZER_HASH = '$2a$10$rCdXaZUkNywG76og.PGgPe1v/aviIqzEO1LrJ/2YZeerk3CrGqbpS';
@@ -40,6 +41,7 @@ export class AuthService {
         role: user.role,
         warehouseId: user.warehouseId,
         warehouseName: user.warehouse?.name ?? '',
+        permissions: effectivePermissions(user.role, user.customRole?.permissions),
       },
     };
   }
@@ -87,11 +89,17 @@ export class AuthService {
         role: true,
         warehouseId: true,
         warehouse: { select: { name: true } },
+        customRole: { select: { id: true, name: true, permissions: true } },
       },
     });
     if (!user) throw new NotFoundException({ error: 'USER_NOT_FOUND', message: 'Usuario no encontrado' });
-    const { warehouse, ...profile } = user;
-    return { ...profile, warehouseName: warehouse?.name ?? '' };
+    const { warehouse, customRole, ...profile } = user;
+    return {
+      ...profile,
+      warehouseName: warehouse?.name ?? '',
+      customRole: customRole && { id: customRole.id, name: customRole.name },
+      permissions: effectivePermissions(user.role, customRole?.permissions),
+    };
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

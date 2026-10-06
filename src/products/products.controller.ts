@@ -19,16 +19,15 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { stockWarehouseFor } from '../common/utils/warehouse-scope';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 const PRODUCT_EXAMPLE = {
   id: 'p001',
@@ -63,7 +62,7 @@ const ERR_422 = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválid
 
 @ApiTags('products')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('products')
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
@@ -191,7 +190,7 @@ Authorization: Bearer eyJ...
   }
 
   @Post()
-  @Roles(Role.supervisor)
+  @RequirePermissions('products.write')
   @ApiOperation({
     summary: 'Crear producto',
     description: `Agrega un producto al catálogo global. **Requiere rol supervisor o admin.**
@@ -224,7 +223,7 @@ Content-Type: application/json
   }
 
   @Patch(':id')
-  @Roles(Role.supervisor)
+  @RequirePermissions('products.write')
   @ApiOperation({
     summary: 'Editar producto',
     description: 'Actualiza los datos del catálogo (nombre, categoría, etc). **No modifica stock** — para eso usar `POST /v1/products/:id/movements`. **Requiere rol supervisor o admin.**',
@@ -240,7 +239,7 @@ Content-Type: application/json
   }
 
   @Delete(':id')
-  @Roles(Role.admin)
+  @RequirePermissions('products.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Desactivar producto (soft delete)',
@@ -256,7 +255,7 @@ Content-Type: application/json
   }
 
   @Post(':id/photos')
-  @Roles(Role.supervisor)
+  @RequirePermissions('products.write')
   @ApiOperation({
     summary: 'Agregar foto al producto',
     description: `Asocia una URL de foto al producto. **Flujo recomendado:**
@@ -279,7 +278,7 @@ Content-Type: application/json
   }
 
   @Delete(':id/photos/:photoUrl')
-  @Roles(Role.supervisor)
+  @RequirePermissions('products.write')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar foto del producto',

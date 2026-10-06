@@ -11,9 +11,6 @@ import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { UsersService } from '../src/users/users.service';
 import { deleteTestTenant, testPrisma } from './support/tenancy';
 
-process.env.JWT_SECRET ??= 'test-access-secret';
-process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
-
 describe('Platform console (integration)', () => {
   const prisma = testPrisma();
   const jwt = new JwtService({ secret: process.env.JWT_SECRET });

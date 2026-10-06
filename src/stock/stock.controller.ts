@@ -8,11 +8,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { MovementType, Role } from '@prisma/client';
+import { MovementType } from '@prisma/client';
 import { StockService } from './stock.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess, resolveWarehouseId, scopeWarehouseFilter } from '../common/utils/warehouse-scope';
@@ -47,7 +47,7 @@ const ERR_422 = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválid
 
 @ApiTags('stock')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller()
 export class StockController {
   constructor(private stockService: StockService) {}
@@ -186,7 +186,7 @@ Content-Type: application/json
   @ApiResponse({ status: 403, description: 'Rol insuficiente o almacén no permitido', schema: { example: ERR_403 } })
   @ApiResponse({ status: 409, description: 'Stock insuficiente (ajuste negativo)', schema: { example: ERR_409_STOCK } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: ERR_422 } })
-  @Roles(Role.supervisor)
+  @RequirePermissions('stock.adjust')
   registerMovement(
     @Param('id') productId: string,
     @Body() body: CreateMovementDto,
@@ -212,7 +212,7 @@ Content-Type: application/json
   @ApiResponse({ status: 401, description: 'No autenticado', schema: { example: ERR_401 } })
   @ApiResponse({ status: 403, description: 'Rol insuficiente o almacén no permitido', schema: { example: ERR_403 } })
   @ApiResponse({ status: 404, description: 'Registro de stock no encontrado', schema: { example: ERR_404_PRODUCT } })
-  @Roles(Role.supervisor)
+  @RequirePermissions('stock.settings')
   updateStockSettings(
     @Param('productId') productId: string,
     @Param('warehouseId') warehouseId: string,
@@ -279,7 +279,7 @@ Content-Type: application/json
   @ApiResponse({ status: 404, description: 'Producto o almacén no encontrado', schema: { example: ERR_404_PRODUCT } })
   @ApiResponse({ status: 409, description: 'Stock insuficiente en almacén origen', schema: { example: ERR_409_STOCK } })
   @ApiResponse({ status: 422, description: 'Datos inválidos', schema: { example: ERR_422 } })
-  @Roles(Role.supervisor)
+  @RequirePermissions('stock.transfer')
   transfer(
     @Body() body: TransferDto,
     @CurrentUser() user: AuthUser,

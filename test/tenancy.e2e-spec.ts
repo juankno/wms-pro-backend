@@ -11,6 +11,7 @@ import { UploadsService } from '../src/uploads/uploads.service';
 import { WarehousesService } from '../src/warehouses/warehouses.service';
 import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, runInTenant, scopedTo, testPrisma } from './support/tenancy';
+import { effectivePermissions } from '../src/auth/permissions';
 
 interface TenantFixture {
   tenant: Tenant;
@@ -53,7 +54,7 @@ describe('Tenant isolation (integration)', () => {
       tenant,
       warehouseId: warehouse.id,
       productId: product.id,
-      admin: { id: user.id, sub: user.id, tenantId: tenant.id, username: 'admin', name: 'Admin', role: Role.admin, warehouseId: null },
+      admin: { id: user.id, sub: user.id, tenantId: tenant.id, username: 'admin', name: 'Admin', role: Role.admin, warehouseId: null, permissions: effectivePermissions(Role.admin) },
     };
   };
 

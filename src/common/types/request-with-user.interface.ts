@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import { Role } from '@prisma/client';
+import type { Permission } from '../../auth/permissions';
 
 export interface JwtPayload {
   sub: string;
@@ -12,6 +13,7 @@ export interface JwtPayload {
 export interface AuthUser extends JwtPayload {
   id: string;
   name: string;
+  permissions: Permission[];
 }
 
 export interface RequestWithUser extends Request {

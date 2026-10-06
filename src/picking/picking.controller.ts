@@ -20,11 +20,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OrderStatus, Priority, Role } from '@prisma/client';
+import { OrderStatus, Priority } from '@prisma/client';
 import { PickingService } from './picking.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { PickingQueryDto } from '../common/dto/orders-query.dto';
@@ -36,6 +35,7 @@ import {
   UpdatePickingItemDto,
   UpdatePickingStatusDto,
 } from './dto/create-picking.dto';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 const PICKING_ITEM_EXAMPLE = {
   id: 'pi_001',
@@ -77,7 +77,7 @@ const ERR_422_VAL = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inv√
 
 @ApiTags('picking')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('picking')
 export class PickingController {
   constructor(private pickingService: PickingService) {}
@@ -240,7 +240,7 @@ Content-Type: application/json
   }
 
   @Delete(':id')
-  @Roles(Role.supervisor)
+  @RequirePermissions('orders.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar orden de picking',

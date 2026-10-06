@@ -9,9 +9,7 @@ import { AuthUser } from '../src/common/types/request-with-user.interface';
 import { UsersService } from '../src/users/users.service';
 import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
-
-process.env.JWT_SECRET ??= 'test-access-secret';
-process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
+import { effectivePermissions } from '../src/auth/permissions';
 
 describe('Auth and users (integration)', () => {
   const prisma = testPrisma();
@@ -34,7 +32,7 @@ describe('Auth and users (integration)', () => {
       },
     });
   const asActor = (user: { id: string; tenantId: string; username: string; name: string; role: Role }): AuthUser => ({
-    id: user.id, sub: user.id, tenantId: user.tenantId, username: user.username, name: user.name, role: user.role, warehouseId: null,
+    id: user.id, sub: user.id, tenantId: user.tenantId, username: user.username, name: user.name, role: user.role, warehouseId: null, permissions: effectivePermissions(user.role),
   });
   const login = (username: string, pass = password, slug = tenant.slug) => auth.login({ tenant: slug, username, password: pass });
 

@@ -3,9 +3,10 @@ import { Role } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { AuthUser } from '../types/request-with-user.interface';
 import { assertWarehouseAccess, resolveWarehouseId, scopeWarehouseFilter } from './warehouse-scope';
+import { effectivePermissions } from '../../auth/permissions';
 
 const buildUser = (role: Role, warehouseId: string | null): AuthUser => ({
-  id: 'u1', sub: 'u1', tenantId: 't1', name: 'User', username: 'user', role, warehouseId,
+  id: 'u1', sub: 'u1', tenantId: 't1', name: 'User', username: 'user', role, warehouseId, permissions: effectivePermissions(role),
 });
 
 describe('warehouse scope', () => {

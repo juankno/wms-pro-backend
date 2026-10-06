@@ -9,6 +9,7 @@ import { PickingService } from '../src/picking/picking.service';
 import { UploadsService } from '../src/uploads/uploads.service';
 import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
+import { effectivePermissions } from '../src/auth/permissions';
 
 
 describe('Picking and packing reservations (integration)', () => {
@@ -51,7 +52,7 @@ describe('Picking and packing reservations (integration)', () => {
       createUser('outsider', Role.operator, otherWarehouseId),
     ]);
     const toAuthUser = (u: typeof adminRow): AuthUser => ({
-      id: u.id, sub: u.id, tenantId, name: u.name, username: u.username, role: u.role, warehouseId: u.warehouseId,
+      id: u.id, sub: u.id, tenantId, name: u.name, username: u.username, role: u.role, warehouseId: u.warehouseId, permissions: effectivePermissions(u.role),
     });
     admin = toAuthUser(adminRow);
     outsider = toAuthUser(outsiderRow);

@@ -16,6 +16,10 @@ export class CreateUserDto {
 
   @ApiProperty({ enum: Role }) @IsEnum(Role) role!: Role;
   @ApiPropertyOptional() @IsOptional() @IsString() warehouseId?: string;
+  @ApiPropertyOptional({ description: 'Custom role that replaces the base role permissions' })
+  @IsOptional()
+  @IsString()
+  customRoleId?: string;
 }
 
 export class UpdateUserDto {
@@ -38,4 +42,10 @@ export class UpdateUserDto {
   warehouseId?: string | null;
 
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+
+  @ApiPropertyOptional({ nullable: true, description: 'null removes the custom role' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  customRoleId?: string | null;
 }
