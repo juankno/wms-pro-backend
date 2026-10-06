@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   'warehouses.all': 'Operar en todos los almacenes',
   'audit.read': 'Ver auditoría',
   'tenant.manage': 'Ver plan y uso de la empresa',
+  'settings.manage': 'Configurar campos personalizados',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

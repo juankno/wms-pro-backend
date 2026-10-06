@@ -10,9 +10,10 @@ import { UploadsService } from '../uploads/uploads.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
-import { Prisma, WarehouseStock } from '@prisma/client';
+import { CustomFieldEntity, Prisma, WarehouseStock } from '@prisma/client';
 import { STOCK_STATUS_CONDITION, StockStatus } from '../stock/stock-status';
 import { requireTenantId } from '../tenancy/tenant-context';
+import { resolveCustomFields } from '../custom-fields/custom-fields.service';
 
 @Injectable()
 export class ProductsService {
@@ -169,7 +170,8 @@ export class ProductsService {
 
   async create(dto: CreateProductDto) {
     if (dto.barcode) await this.assertBarcodeFree(dto.barcode);
-    return this.prisma.product.create({ data: { ...dto, tenantId: requireTenantId() } });
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.product, {}, dto.customFields, 'create');
+    return this.prisma.product.create({ data: { ...dto, customFields, tenantId: requireTenantId() } });
   }
 
   async update(id: string, data: Partial<CreateProductDto>) {
@@ -178,8 +180,9 @@ export class ProductsService {
 
     if (data.barcode && data.barcode !== product.barcode) await this.assertBarcodeFree(data.barcode);
     if (data.lotTracking !== undefined && data.lotTracking !== product.lotTracking) await this.assertWithoutStock(id);
+    const customFields = await resolveCustomFields(this.prisma, CustomFieldEntity.product, product.customFields, data.customFields, 'update');
 
-    return this.prisma.product.update({ where: { id }, data });
+    return this.prisma.product.update({ where: { id }, data: { ...data, customFields } });
   }
 
   async softDelete(id: string) {
