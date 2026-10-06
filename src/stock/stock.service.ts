@@ -6,7 +6,7 @@ import { ManualMovementType } from './dto/create-movement.dto';
 import { lockWarehouseStock } from './stock-lock';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { Allocation, allocateOutbound, assertUnlocatedAvailable, putAway, takeFromLocation } from './location-stock';
-import { addToLots, fefoOrder, LotInput, receiveIntoLot, singleLot, takeFromLots } from './lot-stock';
+import { addToLots, LotInput, lotOrder, pickingStrategyFor, receiveIntoLot, singleLot, takeFromLots } from './lot-stock';
 
 const MOVEMENT_LOCATIONS = {
   location: { select: { id: true, code: true } },
@@ -290,6 +290,8 @@ export class StockService {
     ]);
     if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'El producto no tiene stock registrado en este almacén' });
     const located = rows.reduce((sum, row) => sum + row.quantity, 0);
+    const strategy = await pickingStrategyFor(this.prisma, productId);
+    const order = lotOrder(strategy);
     return {
       onHand: stock.onHand,
       reserved: stock.reserved,
@@ -297,8 +299,9 @@ export class StockService {
       available: stock.onHand - stock.reserved,
       unlocated: stock.onHand - stock.picked - located,
       locations: rows.map((row) => ({ location: row.location, quantity: row.quantity })),
+      pickingStrategy: strategy,
       lots: lots
-        .sort((a, b) => fefoOrder(a.lot, b.lot))
+        .sort((a, b) => order(a.lot, b.lot))
         .map(({ lot, quantity }) => ({ lot: { id: lot.id, code: lot.code, expiresAt: lot.expiresAt }, quantity })),
     };
   }

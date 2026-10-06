@@ -160,24 +160,26 @@ model Warehouse {
 }
 
 model Product {
-  id            String   @id @default(uuid())
-  tenantId      String
-  code          String
-  name          String
-  description   String   @default("")
-  category      String
-  barcode       String?
-  unit          String   @default("UND")
-  brand         String?
-  compatibility String[] @default([])
-  imageUrl      String?
-  photos        String[] @default([])
+  id              String           @id @default(uuid())
+  tenantId        String
+  code            String
+  name            String
+  description     String           @default("")
+  category        String
+  barcode         String?
+  unit            String           @default("UND")
+  brand           String?
+  compatibility   String[]         @default([])
+  imageUrl        String?
+  photos          String[]         @default([])
   // Lot-tracked products need a lot on every receipt and ship first-expired-first-out.
-  lotTracking   Boolean  @default(false)
-  customFields  Json     @default("{}")
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  lotTracking     Boolean          @default(false)
+  // Overrides the tenant default (settings.pickingStrategy) for this product.
+  pickingStrategy PickingStrategy?
+  customFields    Json             @default("{}")
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   warehouseStock WarehouseStock[]
   locationStock  LocationStock[]
@@ -909,4 +911,11 @@ model PickingWave {
   @@unique([tenantId, reference])
   @@index([tenantId, status])
   @@map("picking_waves")
+}
+
+// Which lot leaves first: first to expire, first received or last received.
+enum PickingStrategy {
+  fefo
+  fifo
+  lifo
 }

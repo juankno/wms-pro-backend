@@ -1,5 +1,5 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
-import { Prisma, WarehouseStock } from '@prisma/client';
+import { PickingStrategy, Prisma, WarehouseStock } from '@prisma/client';
 import { requireTenantId } from '../tenancy/tenant-context';
 
 // Like location-stock, every function expects the caller to hold the WarehouseStock row lock.
@@ -20,6 +20,21 @@ type StockRow = Pick<WarehouseStock, 'productId' | 'warehouseId'>;
 export async function isLotTracked(tx: Tx, productId: string): Promise<boolean> {
   const product = await tx.product.findUnique({ where: { id: productId }, select: { lotTracking: true } });
   return product?.lotTracking ?? false;
+}
+
+export const DEFAULT_PICKING_STRATEGY = PickingStrategy.fefo;
+
+// The product's own strategy, else the tenant default in settings.pickingStrategy, else FEFO.
+export async function pickingStrategyFor(client: Pick<Tx, 'product' | 'tenant'>, productId: string): Promise<PickingStrategy> {
+  const product = await client.product.findUnique({ where: { id: productId }, select: { pickingStrategy: true } });
+  if (product?.pickingStrategy) return product.pickingStrategy;
+  const tenant = await client.tenant.findUnique({ where: { id: requireTenantId() }, select: { settings: true } });
+  return tenantPickingStrategy(tenant?.settings);
+}
+
+export function tenantPickingStrategy(settings: Prisma.JsonValue | undefined): PickingStrategy {
+  const value = (settings as { pickingStrategy?: unknown } | null)?.pickingStrategy;
+  return Object.values(PickingStrategy).includes(value as PickingStrategy) ? (value as PickingStrategy) : DEFAULT_PICKING_STRATEGY;
 }
 
 // Finds or creates the lot; an existing lot keeps its expiry, which must match when both are given.
@@ -81,7 +96,8 @@ export async function takeFromLots(tx: Tx, stock: StockRow, quantity: number, lo
     where: { productId: stock.productId, warehouseId: stock.warehouseId, quantity: { gt: 0 }, ...(lotId && { lotId }) },
     include: { lot: { select: { code: true, expiresAt: true, createdAt: true } } },
   });
-  rows.sort((a, b) => fefoOrder(a.lot, b.lot));
+  const order = lotOrder(await pickingStrategyFor(tx, stock.productId));
+  rows.sort((a, b) => order(a.lot, b.lot));
 
   const available = rows.reduce((sum, row) => sum + row.quantity, 0);
   if (available < quantity) {
@@ -104,14 +120,25 @@ export async function takeFromLots(tx: Tx, stock: StockRow, quantity: number, lo
   return allocations;
 }
 
-export function fefoOrder(
-  a: { expiresAt: Date | null; createdAt: Date },
-  b: { expiresAt: Date | null; createdAt: Date },
-): number {
+type LotDates = { expiresAt: Date | null; createdAt: Date };
+
+export function fefoOrder(a: LotDates, b: LotDates): number {
   if (a.expiresAt && b.expiresAt) return a.expiresAt.getTime() - b.expiresAt.getTime() || a.createdAt.getTime() - b.createdAt.getTime();
   if (a.expiresAt) return -1;
   if (b.expiresAt) return 1;
   return a.createdAt.getTime() - b.createdAt.getTime();
+}
+
+// Order in which lots leave the warehouse; lots are dated by when they were first received.
+export function lotOrder(strategy: PickingStrategy): (a: LotDates, b: LotDates) => number {
+  switch (strategy) {
+    case PickingStrategy.fifo:
+      return (a, b) => a.createdAt.getTime() - b.createdAt.getTime();
+    case PickingStrategy.lifo:
+      return (a, b) => b.createdAt.getTime() - a.createdAt.getTime();
+    case PickingStrategy.fefo:
+      return fefoOrder;
+  }
 }
 
 export const singleLot = (allocations: LotAllocation[]) => (allocations.length === 1 ? allocations[0].lotId : undefined);
@@ -144,7 +171,8 @@ export async function returnPickedLots(
     where: { pickingItemId: { in: pickingItemIds }, quantity: { gt: 0 }, ...(lotId && { lotId }) },
     include: { lot: { select: { expiresAt: true, createdAt: true } } },
   });
-  picks.sort((a, b) => fefoOrder(b.lot, a.lot));
+  const order = lotOrder(await pickingStrategyFor(tx, stock.productId));
+  picks.sort((a, b) => order(b.lot, a.lot));
 
   const returned: LotAllocation[] = [];
   let remaining = quantity;
