@@ -4,9 +4,11 @@ import { authConfig } from '../config/env';
 import { PlatformJwtStrategy } from './platform-jwt.strategy';
 import { PlatformController } from './platform.controller';
 import { PlatformService } from './platform.service';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
+    AuditModule,
     JwtModule.registerAsync({
       useFactory: () => {
         const { accessSecret, accessTtlSeconds } = authConfig();

@@ -18,6 +18,7 @@ import {
 } from 'class-validator';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../../auth/dto/change-password.dto';
 import { PLAN_LIMITS } from '../../tenancy/plans';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 const PLANS = Object.keys(PLAN_LIMITS);
 const SLUG = /^[a-z0-9-]{2,40}$/;
@@ -57,6 +58,23 @@ class LimitsDto {
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(0) users?: number | null;
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(0) warehouses?: number | null;
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(0) ordersPerMonth?: number | null;
+}
+
+export class ImpersonateDto {
+  @ApiPropertyOptional({ description: 'User to act as; defaults to the oldest active admin' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @ApiProperty({ description: 'Why support needs access; stored in both audit logs' })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class PlatformAuditQueryDto extends PaginationDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() tenantId?: string;
 }
 
 export class UpdateTenantDto {

@@ -342,19 +342,22 @@ model ActivityLog {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  tenantId   String
-  actorId    String
-  actorName  String
-  action     String
-  resource   String
-  resourceId String?
-  route      String
-  statusCode Int
-  payload    Json?
-  requestId  String?
-  ip         String?
-  createdAt  DateTime @default(now())
+  id               String   @id @default(uuid())
+  tenantId         String
+  actorId          String
+  actorName        String
+  action           String
+  resource         String
+  resourceId       String?
+  route            String
+  statusCode       Int
+  payload          Json?
+  requestId        String?
+  ip               String?
+  // Set when a platform admin acted through a support session.
+  impersonatorId   String?
+  impersonatorName String?
+  createdAt        DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -374,6 +377,22 @@ model PlatformAdmin {
   updatedAt DateTime @updatedAt
 
   @@map("platform_admins")
+}
+
+// Actions of platform admins. Kept without foreign keys so entries outlive the records they mention.
+model PlatformAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  adminEmail String
+  action     String
+  tenantId   String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("platform_audit_logs")
 }
 
 // Tenant-defined role; when assigned it replaces the permissions of the user's base role.
