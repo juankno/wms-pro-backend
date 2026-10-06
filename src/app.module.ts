@@ -36,6 +36,7 @@ import { SequencesModule } from './sequences/sequences.module';
 import { SalesModule } from './sales/sales.module';
 import { WavesModule } from './waves/waves.module';
 import { ShippingModule } from './shipping/shipping.module';
+import { CycleCountsModule } from './cycle-counts/cycle-counts.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { ShippingModule } from './shipping/shipping.module';
     SalesModule,
     WavesModule,
     ShippingModule,
+    CycleCountsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

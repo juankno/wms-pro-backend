@@ -78,6 +78,7 @@ model Tenant {
   pickingWaves   PickingWave[]
   carriers       Carrier[]
   shipments      Shipment[]
+  cycleCounts    CycleCount[]
 
   @@map("tenants")
 }
@@ -109,6 +110,8 @@ model User {
   createdWaves    PickingWave[]    @relation("WaveCreator")
   assignedWaves   PickingWave[]    @relation("WaveAssignee")
   shipments       Shipment[]
+  createdCounts   CycleCount[]     @relation("CountCreator")
+  approvedCounts  CycleCount[]     @relation("CountApprover")
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -156,6 +159,7 @@ model Warehouse {
   receipts       Receipt[]
   salesOrders    SalesOrder[]
   pickingWaves   PickingWave[]
+  cycleCounts    CycleCount[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -195,6 +199,7 @@ model Product {
   purchaseItems  PurchaseOrderItem[]
   receiptLines   ReceiptLine[]
   salesItems     SalesOrderItem[]
+  countLines     CycleCountLine[]
   tenant         Tenant              @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -527,14 +532,15 @@ model Location {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  tenant        Tenant          @relation(fields: [tenantId], references: [id])
-  warehouse     Warehouse       @relation(fields: [warehouseId], references: [id])
-  parent        Location?       @relation("LocationTree", fields: [parentId], references: [id])
-  children      Location[]      @relation("LocationTree")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  warehouse     Warehouse        @relation(fields: [warehouseId], references: [id])
+  parent        Location?        @relation("LocationTree", fields: [parentId], references: [id])
+  children      Location[]       @relation("LocationTree")
   stock         LocationStock[]
   receiptLines  ReceiptLine[]
-  movementsFrom StockMovement[] @relation("MovementLocation")
-  movementsTo   StockMovement[] @relation("MovementToLocation")
+  countLines    CycleCountLine[]
+  movementsFrom StockMovement[]  @relation("MovementLocation")
+  movementsTo   StockMovement[]  @relation("MovementToLocation")
 
   @@unique([warehouseId, code])
   @@index([tenantId, warehouseId, parentId])
@@ -970,4 +976,61 @@ model Shipment {
   @@index([tenantId, status])
   @@index([tenantId, trackingNumber])
   @@map("shipments")
+}
+
+enum CycleCountStatus {
+  open
+  submitted
+  approved
+  cancelled
+}
+
+// Physical count of part of a warehouse. Lines keep the quantity expected when the count started;
+// approving applies counted - expected as stock adjustments.
+model CycleCount {
+  id           String           @id @default(uuid())
+  tenantId     String
+  reference    String
+  warehouseId  String
+  status       CycleCountStatus @default(open)
+  // Counters do not see expected quantities.
+  blind        Boolean          @default(false)
+  notes        String?
+  createdById  String
+  approvedById String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  warehouse  Warehouse        @relation(fields: [warehouseId], references: [id])
+  createdBy  User             @relation("CountCreator", fields: [createdById], references: [id])
+  approvedBy User?            @relation("CountApprover", fields: [approvedById], references: [id])
+  lines      CycleCountLine[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@map("cycle_counts")
+}
+
+model CycleCountLine {
+  id               String    @id @default(uuid())
+  cycleCountId     String
+  productId        String
+  // null counts the units of the product that are not in any location.
+  locationId       String?
+  expectedQuantity Int
+  countedQuantity  Int?
+  // Lot of the extra units found in lot-tracked products.
+  lotCode          String?
+  countedById      String?
+  countedAt        DateTime?
+
+  cycleCount CycleCount @relation(fields: [cycleCountId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+  location   Location?  @relation(fields: [locationId], references: [id])
+
+  @@index([cycleCountId])
+  @@map("cycle_count_lines")
 }

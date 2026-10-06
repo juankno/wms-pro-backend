@@ -27,6 +27,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'pickingWave',
   'carrier',
   'shipment',
+  'cycleCount',
 ]);
 
 const FILTERED_OPERATIONS = new Set([
