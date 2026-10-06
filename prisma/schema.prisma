@@ -62,6 +62,7 @@ model Tenant {
   activityLogs   ActivityLog[]
   auditLogs      AuditLog[]
   roles          TenantRole[]
+  invitations    UserInvitation[]
 
   @@map("tenants")
 }
@@ -81,16 +82,17 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id])
+  warehouse       Warehouse?       @relation(fields: [warehouseId], references: [id])
   refreshTokens   RefreshToken[]
-  assignedPicking PickingOrder[]  @relation("PickingAssignee")
-  createdPicking  PickingOrder[]  @relation("PickingCreator")
-  assignedPacking PackingOrder[]  @relation("PackingAssignee")
-  createdPacking  PackingOrder[]  @relation("PackingCreator")
+  assignedPicking PickingOrder[]   @relation("PickingAssignee")
+  createdPicking  PickingOrder[]   @relation("PickingCreator")
+  assignedPacking PackingOrder[]   @relation("PackingAssignee")
+  createdPacking  PackingOrder[]   @relation("PackingCreator")
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
-  tenant          Tenant          @relation(fields: [tenantId], references: [id])
-  customRole      TenantRole?     @relation(fields: [customRoleId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  customRole      TenantRole?      @relation(fields: [customRoleId], references: [id])
+  sentInvitations UserInvitation[]
 
   @@unique([tenantId, username])
   @@unique([tenantId, email])
@@ -125,6 +127,7 @@ model Warehouse {
   pickingOrders  PickingOrder[]
   packingOrders  PackingOrder[]
   stockMovements StockMovement[]
+  invitations    UserInvitation[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -383,9 +386,35 @@ model TenantRole {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  users  User[]
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  users       User[]
+  invitations UserInvitation[]
 
   @@unique([tenantId, name])
   @@map("tenant_roles")
+}
+
+// Pending access for a person who will choose their own username and password.
+// Only the hash of the token is stored; the token itself travels in the email link.
+model UserInvitation {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  role         Role      @default(operator)
+  customRoleId String?
+  warehouseId  String?
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  invitedById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  invitedBy  User        @relation(fields: [invitedById], references: [id])
+  customRole TenantRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, email])
+  @@map("user_invitations")
 }

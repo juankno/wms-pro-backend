@@ -31,6 +31,22 @@ export function validateEnv(env: NodeJS.ProcessEnv = process.env): void {
 
   parseDurationSeconds(env.JWT_EXPIRES_IN ?? '1h');
   parseDurationSeconds(env.JWT_REFRESH_EXPIRES_IN ?? '30d');
+  mailConfig(env);
+}
+
+const MAIL_DRIVERS = ['log', 'smtp'] as const;
+type MailDriver = (typeof MAIL_DRIVERS)[number];
+
+export function mailConfig(env: NodeJS.ProcessEnv = process.env) {
+  const driver = (env.MAIL_DRIVER ?? 'log') as MailDriver;
+  if (!MAIL_DRIVERS.includes(driver)) throw new Error(`MAIL_DRIVER must be one of: ${MAIL_DRIVERS.join(', ')}`);
+  if (driver === 'smtp' && !env.SMTP_URL) throw new Error('SMTP_URL is required when MAIL_DRIVER=smtp');
+  return {
+    driver,
+    smtpUrl: env.SMTP_URL ?? '',
+    from: env.MAIL_FROM ?? 'WMS Pro <no-reply@localhost>',
+    appUrl: (env.APP_URL ?? 'http://localhost:3000').replace(/\/+$/, ''),
+  };
 }
 
 export function authConfig(env: NodeJS.ProcessEnv = process.env) {

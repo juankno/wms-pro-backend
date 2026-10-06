@@ -22,6 +22,8 @@ import { AuditInterceptor } from './audit/audit.interceptor';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { PlatformModule } from './platform/platform.module';
 import { RolesModule } from './roles/roles.module';
+import { MailModule } from './mail/mail.module';
+import { InvitationsModule } from './invitations/invitations.module';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { RolesModule } from './roles/roles.module';
     TenancyModule,
     PlatformModule,
     RolesModule,
+    MailModule,
+    InvitationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

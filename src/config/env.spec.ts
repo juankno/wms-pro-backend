@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authConfig, parseDurationSeconds, validateEnv } from './env';
+import { authConfig, mailConfig, parseDurationSeconds, validateEnv } from './env';
 
 const strongSecret = 'a'.repeat(40);
 const baseEnv = { DATABASE_URL: 'postgresql://x', JWT_SECRET: strongSecret, JWT_REFRESH_SECRET: `${strongSecret}b` };
@@ -35,6 +35,18 @@ describe('env', () => {
 
   it('accepts strong production secrets', () => {
     expect(() => validateEnv({ ...baseEnv, NODE_ENV: 'production' })).not.toThrow();
+  });
+
+  it('defaults to the log mail driver and trims the app url', () => {
+    expect(mailConfig({ ...baseEnv, APP_URL: 'https://app.example.com/' })).toMatchObject({
+      driver: 'log',
+      appUrl: 'https://app.example.com',
+    });
+  });
+
+  it('requires SMTP_URL for the smtp mail driver', () => {
+    expect(() => validateEnv({ ...baseEnv, MAIL_DRIVER: 'smtp' })).toThrow(/SMTP_URL/);
+    expect(() => validateEnv({ ...baseEnv, MAIL_DRIVER: 'pigeon' })).toThrow(/MAIL_DRIVER/);
   });
 
   it('exposes token lifetimes in seconds', () => {

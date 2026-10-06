@@ -13,6 +13,7 @@ const TENANT_TABLES = [
   'activity_logs',
   'audit_logs',
   'tenant_roles',
+  'user_invitations',
 ];
 const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;
