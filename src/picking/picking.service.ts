@@ -252,26 +252,37 @@ export class PickingService {
     locationId?: string,
     lotId?: string,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      const order = await this.lockOrder(tx, orderId, user);
-      this.assertEditable(order);
+    return this.prisma.$transaction((tx) => this.updateItemInTransaction(tx, orderId, itemId, pickedQuantity, user, locationId, lotId));
+  }
 
-      const item = order.items.find((i) => i.id === itemId);
-      if (!item) throw new NotFoundException({ error: 'ITEM_NOT_FOUND', message: 'Ítem no encontrado' });
-      if (pickedQuantity > item.quantity) {
-        throw new UnprocessableEntityException({
-          error: 'QUANTITY_EXCEEDED',
-          message: 'La cantidad recogida no puede superar la cantidad solicitada',
-        });
-      }
+  // Sets the picked quantity inside the caller's transaction (wave picking spreads one pick over orders).
+  async updateItemInTransaction(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    itemId: string,
+    pickedQuantity: number,
+    user: AuthUser,
+    locationId?: string,
+    lotId?: string,
+  ) {
+    const order = await this.lockOrder(tx, orderId, user);
+    this.assertEditable(order);
 
-      const delta = pickedQuantity - item.pickedQuantity;
-      if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId, lotId);
+    const item = order.items.find((i) => i.id === itemId);
+    if (!item) throw new NotFoundException({ error: 'ITEM_NOT_FOUND', message: 'Ítem no encontrado' });
+    if (pickedQuantity > item.quantity) {
+      throw new UnprocessableEntityException({
+        error: 'QUANTITY_EXCEEDED',
+        message: 'La cantidad recogida no puede superar la cantidad solicitada',
+      });
+    }
 
-      const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
-      await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
-      return updatedItem;
-    });
+    const delta = pickedQuantity - item.pickedQuantity;
+    if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId, lotId);
+
+    const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
+    await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
+    return updatedItem;
   }
 
   async update(

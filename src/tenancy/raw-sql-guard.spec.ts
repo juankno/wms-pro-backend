@@ -25,6 +25,7 @@ const TENANT_TABLES = [
   'custom_field_definitions',
   'sequences',
   'sales_orders',
+  'picking_waves',
 ];
 const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;

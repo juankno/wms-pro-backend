@@ -5,6 +5,7 @@ export const SEQUENCE_DEFAULTS = {
   picking: 'PK',
   purchase: 'OC',
   sales: 'PV',
+  wave: 'OL',
 } as const;
 
 export type SequenceKey = keyof typeof SEQUENCE_DEFAULTS;
