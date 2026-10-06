@@ -70,6 +70,7 @@ model Tenant {
   barcodes       ProductBarcode[]
   lots           Lot[]
   lotStock       LotStock[]
+  purchaseOrders PurchaseOrder[]
 
   @@map("tenants")
 }
@@ -95,6 +96,7 @@ model User {
   createdPicking  PickingOrder[]   @relation("PickingCreator")
   assignedPacking PackingOrder[]   @relation("PackingAssignee")
   createdPacking  PackingOrder[]   @relation("PackingCreator")
+  purchaseOrders  PurchaseOrder[]
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
@@ -138,6 +140,7 @@ model Warehouse {
   locations      Location[]
   locationStock  LocationStock[]
   lotStock       LotStock[]
+  purchaseOrders PurchaseOrder[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -171,7 +174,8 @@ model Product {
   barcodes       ProductBarcode[]
   lots           Lot[]
   lotStock       LotStock[]
-  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  purchaseItems  PurchaseOrderItem[]
+  tenant         Tenant              @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
   @@unique([tenantId, barcode])
@@ -551,8 +555,9 @@ model Partner {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  pickingOrders PickingOrder[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  pickingOrders  PickingOrder[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
@@ -629,4 +634,51 @@ model PickingItemLot {
 
   @@unique([pickingItemId, lotId])
   @@map("picking_item_lots")
+}
+
+enum PurchaseOrderStatus {
+  open
+  partially_received
+  received
+  closed
+  cancelled
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  tenantId    String
+  reference   String
+  supplierId  String
+  warehouseId String
+  status      PurchaseOrderStatus @default(open)
+  expectedAt  DateTime?
+  notes       String?
+  createdById String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  closedAt    DateTime?
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
+  supplier  Partner             @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
+  createdBy User                @relation(fields: [createdById], references: [id])
+  items     PurchaseOrderItem[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String @id @default(uuid())
+  purchaseOrderId  String
+  productId        String
+  quantity         Int
+  receivedQuantity Int    @default(0)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@unique([purchaseOrderId, productId])
+  @@map("purchase_order_items")
 }
