@@ -28,7 +28,7 @@ export class UploadsController {
   @Post('photo')
   @ApiOperation({
     summary: 'Subir foto',
-    description: `Sube una imagen y devuelve la URL pública para usar en productos, pickings o packings.
+    description: `Sube una imagen y devuelve su URL para usar en productos, pickings o packings. Con almacenamiento local la URL es relativa al host de la API (\`/v1/uploads/...\`); con S3 es absoluta.
 
 **Flujo recomendado:**
 1. \`POST /uploads/photo\` → obtén la URL
@@ -51,8 +51,8 @@ export class UploadsController {
     description: 'Imagen subida correctamente',
     schema: {
       example: {
-        id: 'photo_a1b2c3d4e5f6',
-        url: 'http://localhost:3000/v1/uploads/photo_a1b2c3d4e5f6.jpg',
+        id: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+        url: '/v1/uploads/tenants/00000000-0000-4000-8000-000000000001/photos/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4.webp',
       },
     },
   })

@@ -15,9 +15,13 @@ export function isSafeKey(key: string): boolean {
   return SAFE_KEY.test(key) && !key.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');
 }
 
+const URL_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^/]+/i;
+
 export function keyFromPublicUrl(url: string, baseUrl: string): string | null {
   const base = baseUrl.replace(/\/+$/, '') + '/';
-  const clean = url.split(/[?#]/)[0];
+  const path = url.split(/[?#]/)[0];
+  // A root-relative base also recognizes absolute URLs stored before uploads stopped including the host.
+  const clean = base.startsWith('/') ? path.replace(URL_ORIGIN, '') : path;
   if (!clean.startsWith(base)) return null;
   const key = decodeURIComponent(clean.slice(base.length));
   return isSafeKey(key) ? key : null;

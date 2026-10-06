@@ -10,7 +10,7 @@ import { LocalStorage } from './storage/local-storage';
 import { isSafeKey, keyFromPublicUrl } from './storage/object-storage';
 import { UploadsService } from './uploads.service';
 
-const BASE_URL = 'http://api.test/v1/uploads';
+const BASE_URL = '/v1/uploads';
 
 const photo = (width: number, height: number) =>
   sharp({ create: { width, height, channels: 3, background: '#336699' } })
@@ -30,6 +30,8 @@ describe('storage keys', () => {
   it('maps public URLs back to keys only under the base URL', () => {
     expect(keyFromPublicUrl(`${BASE_URL}/tenants/t1/photos/a.webp?v=1`, BASE_URL)).toBe('tenants/t1/photos/a.webp');
     expect(keyFromPublicUrl('https://evil.test/tenants/t1/a.webp', BASE_URL)).toBeNull();
+    expect(keyFromPublicUrl('http://localhost:3001/v1/uploads/tenants/t1/a.webp', BASE_URL)).toBe('tenants/t1/a.webp');
+    expect(keyFromPublicUrl('https://cdn.test/tenants/t1/a.webp', 'https://cdn.test/media')).toBeNull();
     expect(keyFromPublicUrl(`${BASE_URL}/..%2F..%2Fsecret`, BASE_URL)).toBeNull();
   });
 });
