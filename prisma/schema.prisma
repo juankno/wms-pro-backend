@@ -356,3 +356,16 @@ model AuditLog {
   @@index([tenantId, resource, resourceId])
   @@map("audit_logs")
 }
+
+// Operators of the SaaS itself; they manage tenants and never belong to one.
+model PlatformAdmin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  password  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_admins")
+}

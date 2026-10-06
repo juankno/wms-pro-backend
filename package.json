@@ -19,7 +19,8 @@
     "lint:fix": "eslint \"{src,test,prisma}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:cov": "vitest run --coverage",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "platform:create-admin": "ts-node prisma/create-platform-admin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

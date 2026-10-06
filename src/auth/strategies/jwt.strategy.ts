@@ -17,6 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthUser> {
+    if (!payload.tenantId) throw new UnauthorizedException({ error: 'AUTH_TOKEN_EXPIRED' });
     const user = await this.usersService.findById(payload.sub);
     const valid = user?.active && user.tenantId === payload.tenantId && user.tenant.status === TenantStatus.active;
     if (!user || !valid) throw new UnauthorizedException({ error: 'AUTH_TOKEN_EXPIRED' });

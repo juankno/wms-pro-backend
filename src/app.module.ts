@@ -20,6 +20,7 @@ import { TenantInterceptor } from './tenancy/tenant.interceptor';
 import { AuditModule } from './audit/audit.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
 import { TenancyModule } from './tenancy/tenancy.module';
+import { PlatformModule } from './platform/platform.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     HealthModule,
     AuditModule,
     TenancyModule,
+    PlatformModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
