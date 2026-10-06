@@ -95,8 +95,8 @@ Authorization: Bearer eyJ...
       example: {
         warehouseId: 'wh_001',
         summary: { total: 20, outOfStock: 3, lowStock: 5, ok: 12 },
-        outOfStock: [{ id: 'p005', code: 'FLT-0005', name: 'Filtro CAT', onHand: 0, reserved: 0, available: 0, minStock: 5, location: 'A-01-07' }],
-        lowStock: [{ id: 'p006', code: 'FLT-0006', name: 'Filtro Aire', onHand: 3, reserved: 0, available: 3, minStock: 5, location: 'A-01-08' }],
+        outOfStock: [{ id: 'p005', code: 'FLT-0005', name: 'Filtro CAT', warehouseId: 'wh_001', warehouse: { id: 'wh_001', code: 'BOG-01', name: 'Bodega Bogotá' }, onHand: 0, reserved: 0, available: 0, minStock: 5, location: 'A-01-07' }],
+        lowStock: [{ id: 'p006', code: 'FLT-0006', name: 'Filtro Aire', warehouseId: 'wh_001', warehouse: { id: 'wh_001', code: 'BOG-01', name: 'Bodega Bogotá' }, onHand: 3, reserved: 0, available: 3, minStock: 5, location: 'A-01-08' }],
       },
     },
   })
