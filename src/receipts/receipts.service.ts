@@ -8,7 +8,7 @@ import { putAway } from '../stock/location-stock';
 import { receiveIntoLot } from '../stock/lot-stock';
 import { lockWarehouseStock, sumByProduct } from '../stock/stock-lock';
 import { requireTenantId } from '../tenancy/tenant-context';
-import { AddReceiptLineDto, CreateReceiptDto } from './dto/receipt.dto';
+import { AddReceiptLineDto, CreateReceiptDto, UpdateReceiptLineDto } from './dto/receipt.dto';
 
 type Tx = Prisma.TransactionClient;
 
@@ -32,9 +32,9 @@ const NOT_FOUND = { error: 'RECEIPT_NOT_FOUND', message: 'Recepción no encontra
 export class ReceiptsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(opts: { status?: ReceiptStatus; warehouseId?: string; purchaseOrderId?: string; page: number; limit: number }) {
+  async findAll(opts: { status?: ReceiptStatus[]; warehouseId?: string; purchaseOrderId?: string; page: number; limit: number }) {
     const where: Prisma.ReceiptWhereInput = {
-      status: opts.status,
+      status: opts.status && { in: opts.status },
       warehouseId: opts.warehouseId,
       purchaseOrderId: opts.purchaseOrderId,
     };
@@ -135,13 +135,7 @@ export class ReceiptsService {
           });
         }
       }
-      if (product.lotTracking && !dto.lot) {
-        throw new UnprocessableEntityException({ error: 'LOT_REQUIRED', message: `${product.code} maneja lotes; indica el lote` });
-      }
-      if (!product.lotTracking && dto.lot) {
-        throw new UnprocessableEntityException({ error: 'PRODUCT_NOT_LOT_TRACKED', message: 'El producto no maneja lotes' });
-      }
-      if (dto.locationId) await this.assertStorableLocation(tx, dto.locationId, receipt.warehouseId);
+      await this.assertLineDetails(tx, product, receipt.warehouseId, dto.lot, dto.locationId);
 
       const created = await tx.receiptLine.create({
         data: {
@@ -160,6 +154,29 @@ export class ReceiptsService {
       ...line,
       suggestedLocation: line.locationId ? null : await this.suggestPutaway(line.productId, warehouseId, line.quantity),
     };
+  }
+
+  async updateLine(id: string, lineId: string, dto: UpdateReceiptLineDto, user: AuthUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const receipt = await this.lockOpenReceipt(tx, id, user);
+      const line = await tx.receiptLine.findFirst({ where: { id: lineId, receiptId: id }, include: { product: true } });
+      if (!line) throw new NotFoundException({ error: 'RECEIPT_LINE_NOT_FOUND', message: 'Línea no encontrada' });
+
+      const lot = dto.lot ?? line.lotCode ?? undefined;
+      const locationId = dto.locationId === undefined ? (line.locationId ?? undefined) : (dto.locationId ?? undefined);
+      await this.assertLineDetails(tx, line.product, receipt.warehouseId, lot, locationId);
+
+      return tx.receiptLine.update({
+        where: { id: lineId },
+        data: {
+          quantity: dto.quantity,
+          locationId: dto.locationId,
+          lotCode: dto.lot?.trim().toUpperCase(),
+          lotExpiresAt: dto.lotExpiresAt ? new Date(dto.lotExpiresAt) : undefined,
+        },
+        include: { product: { select: { id: true, code: true, name: true, unit: true } }, location: { select: { id: true, code: true } } },
+      });
+    });
   }
 
   async removeLine(id: string, lineId: string, user: AuthUser) {
@@ -318,6 +335,22 @@ export class ReceiptsService {
       });
     }
     return order;
+  }
+
+  private async assertLineDetails(
+    tx: Tx,
+    product: { code: string; lotTracking: boolean },
+    warehouseId: string,
+    lot?: string,
+    locationId?: string,
+  ) {
+    if (product.lotTracking && !lot) {
+      throw new UnprocessableEntityException({ error: 'LOT_REQUIRED', message: `${product.code} maneja lotes; indica el lote` });
+    }
+    if (!product.lotTracking && lot) {
+      throw new UnprocessableEntityException({ error: 'PRODUCT_NOT_LOT_TRACKED', message: 'El producto no maneja lotes' });
+    }
+    if (locationId) await this.assertStorableLocation(tx, locationId, warehouseId);
   }
 
   private async assertStorableLocation(tx: Tx, locationId: string, warehouseId: string) {

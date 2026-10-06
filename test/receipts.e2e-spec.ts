@@ -103,6 +103,19 @@ describe('Receiving (integration)', () => {
     await expect(receipts.removeLine(receipt.id, line.id, operator)).rejects.toMatchObject({ response: { error: 'RECEIPT_INVALID_STATUS' } });
   });
 
+  it('corrects a line before completing and filters by several statuses', async () => {
+    const receipt = await receipts.create({ warehouseId }, operator);
+    const line = await receipts.addLine(receipt.id, { productId: lotProductId, quantity: 1, lot: 'a' }, operator);
+    const updated = await receipts.updateLine(receipt.id, line.id, { quantity: 3, locationId: binId, lot: 'b' }, operator);
+    expect(updated).toMatchObject({ quantity: 3, lotCode: 'B', location: { id: binId } });
+    expect((await receipts.updateLine(receipt.id, line.id, { locationId: null }, operator)).locationId).toBeNull();
+
+    const open = await receipts.findAll({ status: [ReceiptStatus.open, ReceiptStatus.cancelled], page: 1, limit: 50 });
+    expect(open.data.map((r) => r.id)).toContain(receipt.id);
+    const completed = await receipts.findAll({ status: [ReceiptStatus.completed], page: 1, limit: 50 });
+    expect(completed.data.map((r) => r.id)).not.toContain(receipt.id);
+  });
+
   it('cancels open receipts without moving stock and blocks closed orders', async () => {
     const before = (await stock.productLocations(plainId, warehouseId)).onHand;
     const order = await newOrder([{ productId: plainId, quantity: 5 }]);
