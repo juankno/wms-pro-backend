@@ -30,6 +30,7 @@ import { ImportsModule } from './imports/imports.module';
 import { LotsModule } from './lots/lots.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceiptsModule } from './receipts/receipts.module';
+import { LabelsModule } from './labels/labels.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ReceiptsModule } from './receipts/receipts.module';
     LotsModule,
     PurchasesModule,
     ReceiptsModule,
+    LabelsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
