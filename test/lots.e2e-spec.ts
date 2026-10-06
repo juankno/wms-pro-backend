@@ -143,6 +143,24 @@ describe('Lots and expiry (integration)', () => {
     ).rejects.toMatchObject({ response: { error: 'PRODUCT_NOT_LOT_TRACKED' } });
   });
 
+  it('follows the product strategy, then the tenant default', async () => {
+    await prisma.lot.create({ data: { tenantId, productId, code: 'OLD', createdAt: new Date('2026-01-01') } });
+    await prisma.lot.create({ data: { tenantId, productId, code: 'NEW', createdAt: new Date('2026-06-01') } });
+    await receive(2, 'OLD');
+    await receive(2, 'NEW', '2026-12-01');
+    const decrease = () => stock.registerMovement({ productId, warehouseId, type: 'adjustment_decrease', quantity: 1, ...operator() });
+
+    await prisma.tenant.update({ where: { id: tenantId }, data: { settings: { pickingStrategy: 'fifo' } } });
+    await decrease();
+    expect(await lotBalances()).toEqual({ NEW: 2, OLD: 1 });
+
+    await products.update(productId, { pickingStrategy: 'lifo' });
+    await decrease();
+    expect(await lotBalances()).toEqual({ NEW: 1, OLD: 1 });
+    expect((await stock.productLocations(productId, warehouseId)).pickingStrategy).toBe('lifo');
+    await prisma.tenant.update({ where: { id: tenantId }, data: { settings: {} } });
+  });
+
   it('imports opening balances with lots and expiry', async () => {
     const code = (await prisma.product.findUniqueOrThrow({ where: { id: productId } })).code;
     const csv = `warehouse,product,quantity,lot,expiresAt\nMAIN,${code},7,IMP-1,2028-05-01\nMAIN,${code},1,,\n`;

@@ -1,5 +1,18 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { PickingStrategy } from '@prisma/client';
 
 export class CreateProductDto {
   @ApiProperty()
@@ -49,6 +62,12 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   lotTracking?: boolean;
+
+  @ApiPropertyOptional({ enum: PickingStrategy, nullable: true, description: 'null uses the tenant default' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsEnum(PickingStrategy)
+  pickingStrategy?: PickingStrategy | null;
 
   @ApiPropertyOptional({ type: Object, description: 'Values of the custom fields, keyed by field key; null clears one' })
   @IsOptional()
