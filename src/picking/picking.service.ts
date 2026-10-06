@@ -300,7 +300,7 @@ export class PickingService {
   }
 
   private async lockOrder(tx: Prisma.TransactionClient, id: string, user: AuthUser): Promise<LockedPickingOrder> {
-    await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM picking_orders WHERE id = ${id} AND "tenantId" = ${requireTenantId()} FOR UPDATE`;
     const order = await tx.pickingOrder.findUnique({ where: { id }, include: { items: true } });
     if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden de picking no encontrada' });
     assertWarehouseAccess(user, order.warehouseId);
