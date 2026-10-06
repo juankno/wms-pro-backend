@@ -37,6 +37,12 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 | D8 | Código y comentarios en **inglés**, comentarios mínimos. Los textos que ve el usuario (mensajes de error de la API, Swagger, UI) siguen en español hasta implementar i18n en la Fase 8. La API siempre expone códigos de error estables en inglés (`WAREHOUSE_FORBIDDEN`, …). | Producto SaaS internacional; los clientes traducen a partir del código. |
 | D9 | Los nombres del modelo de datos en español (`stockFisico`, `entrada_compra`, …) se renombran a inglés en la **Fase 1**, en la misma migración que agrega `tenantId`, como cambio de contrato coordinado (API v2) en los tres repos. | Tocar el esquema y el contrato una sola vez. |
 | D10 | Tests con **Vitest + SWC** (NestJS 12 es solo ESM y Jest no lo carga). Integración contra una BD desechable (`TEST_DATABASE_URL`). Nunca se commitea con errores de compilación, lint o tests. | Calidad mínima exigible a cada PR. |
+| D11 | El aislamiento por tenant se hace en la aplicación: `TenantInterceptor` + `AsyncLocalStorage` + un proxy del cliente de Prisma que inyecta `tenantId` **al construir** cada consulta (no al ejecutarla), y SQL crudo con filtro explícito. **RLS de PostgreSQL queda para antes de producción (Fase 8)**, con dos roles: `wms_app` (sin `BYPASSRLS`, `FORCE ROW LEVEL SECURITY`, `SET LOCAL app.tenant_id` por transacción) y `wms_system` (migraciones, login, refresh, consola de plataforma). | Un superusuario ignora RLS, y fijar la variable por consulta con el pool de Prisma duplica los viajes a la base. La capa de aplicación ya está cubierta por tests de aislamiento. |
+| D12 | Las cantidades siguen siendo **enteras en la unidad base** del producto; los empaques se modelan como códigos de barras con cantidad por lectura (2.4). Las **series** (número por unidad) y las **cantidades decimales** quedan para después de la Fase 3. | Pasar a decimales toca todo el motor de stock, reservas y reportes; los casos de granel se cubren eligiendo una unidad base pequeña (gramos, mililitros). |
+| D13 | **Trabajos en segundo plano con `pg-boss`** (cola sobre PostgreSQL, sin Redis): importaciones grandes, generación de PDF, purga de eliminados y notificaciones corren como trabajos con estado, progreso, reintentos y reporte de errores descargable. | Ya usamos PostgreSQL; evita otra pieza de infraestructura y las colas viven en la misma transacción que los datos. |
+| D14 | **Importación por integración**: API con *API keys* por empresa (hash, scopes `products:write`, `stock:write`…, rotación, rate limit) y endpoints por lotes (`POST /integrations/v1/products/batch`, hasta 1000 filas, upsert por código e `Idempotency-Key`); lotes grandes se encolan y responden un `jobId`. Comparte el validador del CSV y luego se suman webhooks (Fase 7). | Más volumen que Excel, idempotente ante reintentos, seguro y auditable. |
+| D15 | **Eliminación lógica** (`deletedAt`) para maestros y documentos, con filtro automático en el proxy de tenant, índices únicos parciales (`WHERE "deletedAt" IS NULL`) para reutilizar códigos y **purga física programada** tras un plazo configurable (90 días por defecto). Las líneas hijas siguen borrándose dentro de la transacción del padre. | Recuperación y trazabilidad; los borrados ya son transaccionales, así que el riesgo real es perder información, no corromperla. |
+| D16 | **Documentos PDF desde plantillas HTML** (Handlebars) renderizadas con Chromium headless en un trabajo de D13 y guardadas en el almacenamiento de objetos; `pdfkit` se mantiene para etiquetas. Importaciones admiten CSV y XLSX (`exceljs`) en streaming. | Plantillas editables por empresa (logo, datos legales) sin bloquear la API. |
 
 ## 4. Diagnóstico inicial (2026-10-04)
 
@@ -59,7 +65,7 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 
 **Backend**
 
-- [ ] B1. (Pendiente solo en warehouses) Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
+- [x] B1. Tipos inline en `@Body()` (sin validación) en stock, picking, packing y warehouses. Un `ajuste_positivo` con cantidad negativa resta stock. `CreateMovementDto` y `TransferDto` existen pero no se usan.
 - [x] B2. `stock.service.ts`: el tipo de movimiento manual no está restringido; `salida_picking` o `entrada_devolucion` se pueden registrar a mano.
 - [x] B3. `stock.controller.ts` no tiene `RolesGuard` ni comprueba la bodega del usuario: cualquier operario ajusta o traslada en cualquier bodega. Lo mismo pasa con `?warehouseId=` en picking, packing, reportes, `users/warehouse/:id` y `activity/order/:id`.
 - [x] B4. Un traslado no valida origen ≠ destino ni que el destino exista; con origen = destino crea o destruye stock.
@@ -71,97 +77,104 @@ Puerto del backend en local: `.env` usa `PORT=3001` (el frontend apunta a `http:
 - [x] B10. No se detecta la reutilización de refresh tokens, que además se guardan en texto plano.
 - [x] B11. `ThrottlerModule` está configurado pero no hay `ThrottlerGuard` global.
 - [x] B12. `/health` responde 200 aunque la BD esté caída.
-- [ ] B13. `products.service.ts`: el filtro `stockStatus` se aplica después de paginar, así que el `total` sale mal.
-- [ ] B14. `reports.service.ts` carga tablas enteras en memoria.
+- [x] B13. `products.service.ts`: el filtro `stockStatus` se aplica después de paginar, así que el `total` sale mal.
+- [x] B14. `reports.service.ts` carga tablas enteras en memoria.
 - [x] B15. `UpdateUserDto.active` no tiene `@IsBoolean`, y un admin puede desactivarse a sí mismo o dejar el sistema sin admin.
 - [x] B16. Swagger documenta `traslado_entrada/salida`, pero el enum real es `entrada_traslado/salida_traslado`.
 - [ ] B17. Uploads solo en disco local, sin procesar imágenes ni limpiar huérfanos.
-- [ ] B18. `NotificationsService` (Expo push) nunca se invoca.
+- [x] B18. `NotificationsService` (Expo push) nunca se invoca.
 - [x] B19. Falta un endpoint `/auth/me` (perfil y cambio de la contraseña propia).
-- [ ] B20. Docker: corre como root, sin HEALTHCHECK, sin `prisma migrate deploy`, con secretos hardcodeados en `docker-compose.yml`.
+- [x] B20. Docker: corre como root, sin HEALTHCHECK, sin `prisma migrate deploy`, con secretos hardcodeados en `docker-compose.yml`.
 - [x] B21. Cero tests (no existe `test/jest-e2e.json`) y sin CI.
 
 **Frontend web**
 
-- [ ] F1. Llama a `/stock/products/:id/movements`, pero la ruta real es `/products/:id/movements` (404): están rotos el ajuste manual y el historial del producto.
-- [ ] F2. Envía `limit` de 200, 500 y 10000, pero el backend permite como máximo 100 (400). Fallan los selectores de producto y la exportación CSV.
-- [ ] F3. El dashboard llama a `reports/*` (solo supervisor), así que el operario recibe 403. `/perfil` usa `PATCH /users/:id` (solo admin).
-- [ ] F4. No hay guard de rol por ruta: un operario puede entrar a `/usuarios`, `/bodegas` y `/reportes`.
-- [ ] F5. Los tokens se duplican en localStorage (claves sueltas y blob de Zustand) y se desincronizan al hacer refresh.
-- [ ] F6. Ninguna query maneja `isError`: un fallo se ve como una tabla vacía.
-- [ ] F7. Sin tests, sin Dockerfile, sin CI, sin `.env.example`.
+- [x] F1. Llama a `/stock/products/:id/movements`, pero la ruta real es `/products/:id/movements` (404): están rotos el ajuste manual y el historial del producto.
+- [x] F2. Envía `limit` de 200, 500 y 10000, pero el backend permite como máximo 100 (400). Fallan los selectores de producto y la exportación CSV.
+- [x] F3. El dashboard llama a `reports/*` (solo supervisor), así que el operario recibe 403. `/perfil` usa `PATCH /users/:id` (solo admin).
+- [x] F4. No hay guard de rol por ruta: un operario puede entrar a `/usuarios`, `/bodegas` y `/reportes`.
+- [x] F5. Los tokens se duplican en localStorage (claves sueltas y blob de Zustand) y se desincronizan al hacer refresh.
+- [x] F6. Ninguna query maneja `isError`: un fallo se ve como una tabla vacía.
+- [x] F7. Sin tests, sin Dockerfile, sin CI, sin `.env.example`.
 
 **App móvil**
 
-- [ ] M1. No restaura la sesión al abrir: `AppNavigator.tsx:79` siempre empieza en Login.
-- [ ] M2. Si el refresh falla, las peticiones en cola (`refreshSubscribers`) quedan colgadas para siempre.
-- [ ] M3. `uploads.service.ts` no maneja 401/refresh.
-- [ ] M4. `AppContext` sigue cargando `mockData`, y las notificaciones locales salen de esos datos simulados.
-- [ ] M5. Aparece "¿Descartar cambios?" después de guardar con éxito (Create/Edit Picking, CreatePacking, ProductForm).
-- [ ] M6. ProductForm no envía `location`.
-- [ ] M7. Scanner: un escaneo hecho antes de que carguen los ítems se marca como "no pertenece", y las pantallas de detalle no se refrescan al volver.
-- [ ] M8. Los toggles de sonido y vibración no hacen nada.
-- [ ] M9. Las listas se truncan en 100 sin paginación.
-- [ ] M10. La referencia de la orden se genera en el cliente y puede repetirse.
-- [ ] M11. El push token nunca se registra. Se piden permisos innecesarios (RECORD_AUDIO, WRITE_EXTERNAL_STORAGE).
-- [ ] M12. Sin tests ni lint. Todo por HTTP plano.
+- [x] M1. No restaura la sesión al abrir: `AppNavigator.tsx:79` siempre empieza en Login.
+- [x] M2. Si el refresh falla, las peticiones en cola (`refreshSubscribers`) quedan colgadas para siempre.
+- [x] M3. `uploads.service.ts` no maneja 401/refresh.
+- [x] M4. `AppContext` sigue cargando `mockData`, y las notificaciones locales salen de esos datos simulados.
+- [x] M5. Aparece "¿Descartar cambios?" después de guardar con éxito (Create/Edit Picking, CreatePacking, ProductForm).
+- [x] M6. ProductForm no envía `location`.
+- [x] M7. Scanner: un escaneo hecho antes de que carguen los ítems se marca como "no pertenece", y las pantallas de detalle no se refrescan al volver.
+- [x] M8. Los toggles de sonido y vibración no hacen nada.
+- [x] M9. Las listas se truncan en 100 sin paginación.
+- [x] M10. La referencia de la orden se genera en el cliente y puede repetirse.
+- [x] M11. El push token nunca se registra. Se piden permisos innecesarios (RECORD_AUDIO, WRITE_EXTERNAL_STORAGE).
+- [x] M12. Sin tests ni lint. Todo por HTTP plano.
 
 ## 5. Fases
 
 Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión vendible = fases 0, 1, 2, 3, 4 y 6 + cobro básico (≈ 4–5 meses).**
 
 ### Fase 0 — Estabilización (1–2 semanas)
-- [ ] 0.1 (Falta warehouses) Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
+- [x] 0.1 Backend: DTOs con class-validator en todos los endpoints (B1, B2, B15, B16).
 - [x] 0.2 Backend: guards de rol y de alcance por bodega (B3).
 - [x] 0.3 Backend: stock atómico, `CHECK >= 0`, validaciones de traslado, reservas correctas en picking y packing, log dentro de la transacción (B4–B8).
 - [x] 0.4 Backend: seguridad y plataforma: secretos, throttler, health 503, refresh tokens hasheados con detección de reutilización, `/auth/me` (B9–B12, B19).
-- [ ] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
+- [x] 0.5 Backend: paginación correcta en productos y reportes agregados en SQL (B13, B14).
 - [x] 0.6 Backend: suite de tests (unitarios + e2e del flujo reserva → picking → packing → descuento) y CI (B21).
-- [ ] 0.7 Frontend: F1–F6.
-- [ ] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
-- [ ] 0.9 Docker y CI en los tres repos (B20, F7, M12).
+- [x] 0.7 Frontend: F1–F6.
+- [x] 0.8 Móvil: M1–M9 y M11; eliminar la capa de datos simulados.
+- [x] 0.9 Docker y CI en los tres repos (B20, F7, M12).
 
 ### Fase 1 — Base SaaS (3–4 semanas)
-- [ ] 1.0 Renombrar a inglés campos y enums del modelo (D9), junto con 1.1.
-- [ ] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
-- [ ] 1.2 Extensión de Prisma que inyecte `tenantId` y políticas RLS en PostgreSQL.
-- [ ] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
-- [ ] 1.4 Roles y permisos configurables por tenant (reemplazan el enum fijo) e invitación de usuarios por correo.
-- [ ] 1.5 Consola de super-admin de la plataforma: crear, suspender y entrar como soporte a un tenant, y métricas de uso.
-- [ ] 1.6 Auditoría general (interceptor), por tenant.
-- [ ] 1.7 Almacenamiento S3-compatible con prefijo por tenant.
-- [ ] 1.8 Límites por plan (usuarios, bodegas, operaciones al mes).
+- [x] 1.0 Renombrar a inglés campos y enums del modelo (D9). Backend #11, web #4, móvil #3.
+- [x] 1.1 Modelo `Tenant` (slug, plan, estado, configuración, feature flags) y `tenantId` en todas las tablas, con migración de los datos actuales a un tenant "default".
+- [x] 1.2 Aislamiento por tenant en el cliente de Prisma (backend #12). RLS diferido a la Fase 8 (D11).
+- [x] 1.3 Login por tenant (subdominio o slug) con el tenant en el JWT.
+- [x] 1.4 Roles y permisos configurables por tenant (reemplazan el enum fijo) e invitación de usuarios por correo. Backend #17 y #18, web #6, móvil #5.
+- [x] 1.5 Consola de super-admin de la plataforma: crear, suspender y entrar como soporte a un tenant, y métricas de uso. Backend #16 y #19 (sesión de soporte de 30 min y auditoría de la plataforma), web #7.
+- [x] 1.6 Auditoría general (interceptor), por tenant. Backend #13.
+- [x] 1.7 Almacenamiento S3-compatible con prefijo por tenant. Backend #14.
+- [x] 1.8 Límites por plan (usuarios, bodegas, operaciones al mes). Backend #15.
 
 ### Fase 2 — Datos maestros configurables (3 semanas)
-- [ ] 2.1 Ubicaciones jerárquicas (bodega → zona → pasillo → estante → nivel → posición) con tipo y capacidad.
-- [ ] 2.2 Stock por ubicación (`LocationStock`), con migración desde `WarehouseStock.location`.
-- [ ] 2.3 Clientes y proveedores.
-- [ ] 2.4 Unidades de medida con conversiones y varios códigos de barras por producto.
-- [ ] 2.5 Lotes, series y vencimiento (activables por tenant y por producto). Cantidades decimales.
-- [ ] 2.6 Campos personalizados por tenant.
-- [ ] 2.7 Importación masiva Excel/CSV (productos, ubicaciones, stock inicial) e impresión de etiquetas.
+- [x] 2.1 Ubicaciones jerárquicas (bodega → zona → pasillo → estante → nivel → posición) con tipo y capacidad. Backend #20 (API y generación por niveles), web #8.
+- [x] 2.2 Stock por ubicación (`LocationStock`), con migración desde `WarehouseStock.location`. Backend #22 (contador `picked`, reubicación, picking por ubicación), web #8, móvil #6.
+- [x] 2.3 Clientes y proveedores. Backend #23, web #9.
+- [ ] 2.4 Unidades de medida con conversiones y varios códigos de barras por producto. Backend #24, web #9, móvil #7: códigos adicionales con cantidad por lectura (empaques). Conversión entre unidades en órdenes pendiente.
+- [x] 2.5 Lotes, series y vencimiento (activables por tenant y por producto). Cantidades decimales. Backend #26, web #10, móvil #8: lotes con vencimiento, FEFO y trazabilidad; series y decimales diferidos (D12).
+- [x] 2.6 Campos personalizados por tenant. Backend #31, web #12 (productos, clientes/proveedores y ubicaciones).
+- [x] 2.7 Importación masiva Excel/CSV (productos, ubicaciones, stock inicial) e impresión de etiquetas. Backend #25 y #29 (etiquetas PDF y ZPL), web #10 y #12.
 
 ### Fase 3 — Entradas (3 semanas)
-- [ ] 3.1 Órdenes de compra.
+- [x] 3.1 Órdenes de compra. Backend #27 y #32, web #11.
 - [ ] 3.2 Avisos de llegada (ASN).
-- [ ] 3.3 Recepción (ciega o contra la orden) con escaneo y diferencias.
-- [ ] 3.4 Putaway con reglas configurables.
-- [ ] 3.5 Devoluciones (RMA).
+- [x] 3.3 Recepción (ciega o contra la orden) con escaneo y diferencias. Backend #28 y #32, web #11, móvil #9.
+- [ ] 3.4 Putaway con reglas configurables. Backend #28: sugerencia "donde ya está el producto y hay capacidad"; faltan reglas configurables.
+- [x] 3.5 Devoluciones (RMA). Backend #33, web #13 (sobre la recepción: reingreso o descarte, límite contra lo despachado).
 - [ ] 3.6 Flujos móviles de recepción y putaway.
 
 ### Fase 4 — Salidas (4 semanas)
-- [ ] 4.1 Pedido de venta → asignación y reserva → tareas de picking.
-- [ ] 4.2 Picking por pedido, en lote o por olas, con ruta por ubicación.
-- [ ] 4.3 Estrategias FIFO, FEFO y LIFO configurables.
-- [ ] 4.4 Packing con contenido por caja y etiquetas ZPL/PDF.
-- [ ] 4.5 Despacho, transportadora, guía y prueba de entrega.
-- [ ] 4.6 Referencias generadas en el backend con secuencias por tenant (M10).
+- [x] 4.1 Pedido de venta → asignación y reserva → tareas de picking. Backend #35, web #14.
+- [x] 4.2 Picking por pedido, en lote o por olas, con ruta por ubicación. Backend #36, web #14, móvil #10.
+- [x] 4.3 Estrategias FIFO, FEFO y LIFO configurables. Backend #37, web #15 (por empresa y por producto, sobre lotes).
+- [x] 4.4 Packing con contenido por caja y etiquetas ZPL/PDF. Backend #38, web #15 (etiqueta de envío por caja).
+- [x] 4.5 Despacho, transportadora, guía y prueba de entrega. Backend #38, web #15; falta la entrega desde el móvil.
+- [x] 4.6 Referencias generadas en el backend con secuencias por tenant (M10). Backend #34, web #13.
 
 ### Fase 5 — Control de inventario (2–3 semanas)
-- [ ] 5.1 Conteos cíclicos con aprobación de diferencias.
-- [ ] 5.2 Traslados con estado en tránsito y recepción en el destino.
+- [x] 5.1 Conteos cíclicos con aprobación de diferencias. Backend #39; falta la UI web y móvil.
+- [x] 5.2 Traslados con estado en tránsito y recepción en el destino. Backend #40; falta la UI web y móvil.
 - [ ] 5.3 Reabastecimiento por mínimo y máximo.
 - [ ] 5.4 Notificaciones push y por correo reales (B18).
+
+### Fase 5.5 — Plataforma de procesos y documentos (2–3 semanas)
+- [ ] 5.5.1 Trabajos en segundo plano (D13): tabla de trabajos visible por empresa, progreso, reintentos y reporte de errores.
+- [ ] 5.5.2 Importación asíncrona CSV/XLSX sobre la cola, con plantillas por tipo y archivo de errores (D16).
+- [ ] 5.5.3 API de integración con API keys, scopes, lotes idempotentes y límites por plan (D14; adelanta parte de 7.1).
+- [ ] 5.5.4 Eliminación lógica y purga programada (D15).
+- [ ] 5.5.5 Documentos PDF: lista de picking, nota de despacho/remisión, acta de recepción, hoja de conteo y orden de compra, con marca de la empresa (D16).
 
 ### Fase 6 — Móvil industrial (2–3 semanas, en paralelo con las fases 3–5)
 - [ ] 6.1 Escaneo por cámara, keyboard-wedge y DataWedge, en modo continuo.
@@ -184,8 +197,21 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ## 6. Estado actual
 
-- **Fase en curso:** Fase 0.
-- **PRs abiertos (apilados, mergear en orden):** #1 (este plan) → #2 stock → #3 ESLint/CI → #4 picking/packing → #5 auth.
-- **Hecho en el backend:** validación y alcance por almacén en stock, picking, packing y usuarios; bloqueo de filas y ciclo de reservas; CHECK en BD; auth endurecida (refresh tokens con hash y detección de reutilización, `/auth/me`, rate limiting, health 503); ESLint, Vitest y CI.
-- **Siguiente tarea:** 0.1 (DTOs de warehouses) y 0.5 (paginación de productos y reportes en SQL). Después 0.7 (web) y 0.8 (móvil).
+- **Fase 0 completa** (pendiente de merge). B17 quedó resuelto con la tarea 1.7.
+- **Fase 1 completa** (pendiente de merge).
+- **Fase 2 completa.**
+- **Fase 3 en curso:** 3.1, 3.3 y 3.5 (API) listas; 3.4 con sugerencia simple; 3.2 (ASN) y 3.6 (putaway móvil) pendientes.
+- **Fase 4 completa** (falta la entrega desde el móvil).
+- **Fase 5 en curso:** 5.1 y 5.2 con API lista; 5.3 y 5.4 pendientes.
+- **Mergeados:** backend #1–#6.
+- **PRs abiertos, con CI en verde (mergear en orden por repo):**
+  - Backend: #7 (plan y CI) · #10 (Docker) · #9 (categorías) → #11 (campos en inglés) → #12 (multiempresa) → #13 (auditoría) → #14 (almacenamiento) → #15 (límites por plan) → #16 (consola de plataforma) → #17 (roles y permisos) → #18 (invitaciones) → #19 (sesiones de soporte) → #20 (ubicaciones) → #22 (stock por ubicación) → #23 (clientes y proveedores) → #24 (códigos de barras) → #25 (importación CSV) → #26 (lotes) → #27 (órdenes de compra) → #28 (recepción) → #29 (etiquetas) → #31 (campos personalizados) → #32 (ajustes de recepción) → #33 (devoluciones) → #34 (secuencias) → #35 (pedidos de venta) → #36 (olas) → #37 (estrategias) → #38 (despacho) → #39 (conteos) → #40 (traslados en tránsito).
+  - Web: #1 → #2 → #3 → #4 (campos en inglés) → #5 (empresa en el login) → #6 (permisos, roles, invitaciones, auditoría) → #7 (consola de plataforma) → #8 (ubicaciones) → #9 (clientes y códigos de barras) → #10 (importación y lotes) → #11 (compras y recepción) → #12 (campos personalizados y etiquetas) → #13 (devoluciones y numeración) → #14 (pedidos de venta y olas) → #15 (despachos y estrategias).
+  - Móvil: #1 → #2 → #3 (campos en inglés) → #4 (empresa en el login) → #5 (permisos) → #6 (ubicaciones) → #7 (empaques al escanear) → #8 (lotes) → #9 (recepción) → #10 (olas).
+- **Despliegue coordinado:** backend #11 con web #4 y móvil #3; backend #12 con web #5 y móvil #4; backend #17 con web #6 y móvil #5; backend #19 con web #7; backend #22 con web #8 y móvil #6.
+- **Variables nuevas:** `STORAGE_DRIVER`/`S3_*` (#14), `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL` (#18). Ver `.env.example`.
+- **Siguiente tarea:** UI de conteos y traslados (web y móvil); 5.3 (reabastecimiento) y 5.4 (notificaciones).
+- **Permiso nuevo para operarios:** desde #28 el rol operario incluye `receiving.execute` por defecto.
+- **Merges bloqueados:** el plugin de Partequipos sigue bloqueando `gh pr merge` aun después de reiniciar la sesión; hay que deshabilitarlo para estos repos o mergear a mano.
+- **Prueba en navegador (Playwright, 2026-10-04):** web #6–#8 cargan sin errores de consola ni de API (usuarios, roles, auditoría, empresa, ubicaciones, stock, producto, invitación, consola de plataforma) y la sesión de soporte entra, muestra el banner y vuelve a la consola. Móvil #5 y #6 sin probar en dispositivo.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).

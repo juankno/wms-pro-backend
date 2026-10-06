@@ -11,7 +11,7 @@ Workflow `.github/workflows/ci.yml`, job `lint-test`, en cada PR y en cada push 
 5. `npm audit --audit-level critical`.
 6. Cobertura del diff ≥ 80 % (diff-cover contra la rama base).
 
-`pr-checks.yml` valida el nombre de la rama (`(feature|fix|chore|refactor)/<slug>`) y que los commits sigan Conventional Commits.
+`pr-checks.yml` valida que los commits sigan Conventional Commits.
 
 ## Ubicación por tipo de test
 
