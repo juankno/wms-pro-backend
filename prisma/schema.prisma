@@ -79,6 +79,7 @@ model Tenant {
   carriers       Carrier[]
   shipments      Shipment[]
   cycleCounts    CycleCount[]
+  stockTransfers StockTransfer[]
 
   @@map("tenants")
 }
@@ -98,25 +99,27 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  warehouse       Warehouse?       @relation(fields: [warehouseId], references: [id])
-  refreshTokens   RefreshToken[]
-  assignedPicking PickingOrder[]   @relation("PickingAssignee")
-  createdPicking  PickingOrder[]   @relation("PickingCreator")
-  assignedPacking PackingOrder[]   @relation("PackingAssignee")
-  createdPacking  PackingOrder[]   @relation("PackingCreator")
-  purchaseOrders  PurchaseOrder[]
-  receipts        Receipt[]
-  salesOrders     SalesOrder[]
-  createdWaves    PickingWave[]    @relation("WaveCreator")
-  assignedWaves   PickingWave[]    @relation("WaveAssignee")
-  shipments       Shipment[]
-  createdCounts   CycleCount[]     @relation("CountCreator")
-  approvedCounts  CycleCount[]     @relation("CountApprover")
-  stockMovements  StockMovement[]
-  activityLogs    ActivityLog[]
-  tenant          Tenant           @relation(fields: [tenantId], references: [id])
-  customRole      TenantRole?      @relation(fields: [customRoleId], references: [id])
-  sentInvitations UserInvitation[]
+  warehouse         Warehouse?       @relation(fields: [warehouseId], references: [id])
+  refreshTokens     RefreshToken[]
+  assignedPicking   PickingOrder[]   @relation("PickingAssignee")
+  createdPicking    PickingOrder[]   @relation("PickingCreator")
+  assignedPacking   PackingOrder[]   @relation("PackingAssignee")
+  createdPacking    PackingOrder[]   @relation("PackingCreator")
+  purchaseOrders    PurchaseOrder[]
+  receipts          Receipt[]
+  salesOrders       SalesOrder[]
+  createdWaves      PickingWave[]    @relation("WaveCreator")
+  assignedWaves     PickingWave[]    @relation("WaveAssignee")
+  shipments         Shipment[]
+  createdCounts     CycleCount[]     @relation("CountCreator")
+  approvedCounts    CycleCount[]     @relation("CountApprover")
+  sentTransfers     StockTransfer[]  @relation("TransferSender")
+  receivedTransfers StockTransfer[]  @relation("TransferReceiver")
+  stockMovements    StockMovement[]
+  activityLogs      ActivityLog[]
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  customRole        TenantRole?      @relation(fields: [customRoleId], references: [id])
+  sentInvitations   UserInvitation[]
 
   @@unique([tenantId, username])
   @@unique([tenantId, email])
@@ -146,21 +149,23 @@ model Warehouse {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users          User[]
-  warehouseStock WarehouseStock[]
-  pickingOrders  PickingOrder[]
-  packingOrders  PackingOrder[]
-  stockMovements StockMovement[]
-  invitations    UserInvitation[]
-  locations      Location[]
-  locationStock  LocationStock[]
-  lotStock       LotStock[]
-  purchaseOrders PurchaseOrder[]
-  receipts       Receipt[]
-  salesOrders    SalesOrder[]
-  pickingWaves   PickingWave[]
-  cycleCounts    CycleCount[]
-  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  users             User[]
+  warehouseStock    WarehouseStock[]
+  pickingOrders     PickingOrder[]
+  packingOrders     PackingOrder[]
+  stockMovements    StockMovement[]
+  invitations       UserInvitation[]
+  locations         Location[]
+  locationStock     LocationStock[]
+  lotStock          LotStock[]
+  purchaseOrders    PurchaseOrder[]
+  receipts          Receipt[]
+  salesOrders       SalesOrder[]
+  pickingWaves      PickingWave[]
+  cycleCounts       CycleCount[]
+  outgoingTransfers StockTransfer[]  @relation("TransferOrigin")
+  incomingTransfers StockTransfer[]  @relation("TransferDestination")
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
   @@map("warehouses")
@@ -200,6 +205,7 @@ model Product {
   receiptLines   ReceiptLine[]
   salesItems     SalesOrderItem[]
   countLines     CycleCountLine[]
+  transferItems  StockTransferItem[]
   tenant         Tenant              @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -1033,4 +1039,52 @@ model CycleCountLine {
 
   @@index([cycleCountId])
   @@map("cycle_count_lines")
+}
+
+enum StockTransferStatus {
+  in_transit
+  received
+}
+
+// Stock moving between warehouses: it leaves the origin when sent and enters the destination
+// when received, so units in transit belong to neither.
+model StockTransfer {
+  id              String              @id @default(uuid())
+  tenantId        String
+  reference       String
+  fromWarehouseId String
+  toWarehouseId   String
+  status          StockTransferStatus @default(in_transit)
+  notes           String?
+  sentById        String
+  receivedById    String?
+  sentAt          DateTime            @default(now())
+  receivedAt      DateTime?
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  fromWarehouse Warehouse           @relation("TransferOrigin", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse           @relation("TransferDestination", fields: [toWarehouseId], references: [id])
+  sentBy        User                @relation("TransferSender", fields: [sentById], references: [id])
+  receivedBy    User?               @relation("TransferReceiver", fields: [receivedById], references: [id])
+  items         StockTransferItem[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id               String @id @default(uuid())
+  transferId       String
+  productId        String
+  quantity         Int
+  receivedQuantity Int    @default(0)
+  // Lots taken at the origin, [{ lotId, quantity }], received into the same lots at the destination.
+  lotAllocations   Json   @default("[]")
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id])
+
+  @@unique([transferId, productId])
+  @@map("stock_transfer_items")
 }

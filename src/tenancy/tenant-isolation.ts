@@ -28,6 +28,7 @@ export const TENANT_SCOPED_DELEGATES = new Set<string>([
   'carrier',
   'shipment',
   'cycleCount',
+  'stockTransfer',
 ]);
 
 const FILTERED_OPERATIONS = new Set([
