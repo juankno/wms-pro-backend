@@ -80,6 +80,11 @@ export class UpdatePickingItemDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  @ApiPropertyOptional({ description: 'Lot taken (or returned). Omitted: first expired, first out.' })
+  @IsOptional()
+  @IsString()
+  lotId?: string;
 }
 
 export class AddPhotoDto {

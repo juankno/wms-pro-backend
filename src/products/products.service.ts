@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -149,6 +150,17 @@ export class ProductsService {
     }
   }
 
+  // Lot balances must cover all stock on hand, so tracking only switches while there is none.
+  private async assertWithoutStock(productId: string) {
+    const { _sum } = await this.prisma.warehouseStock.aggregate({ where: { productId }, _sum: { onHand: true } });
+    if ((_sum.onHand ?? 0) > 0) {
+      throw new UnprocessableEntityException({
+        error: 'LOT_TRACKING_LOCKED',
+        message: 'Solo se puede activar o desactivar el manejo de lotes cuando el producto no tiene stock',
+      });
+    }
+  }
+
   private async findActive(id: string) {
     const product = await this.prisma.product.findFirst({ where: { id, active: true } });
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
@@ -165,6 +177,7 @@ export class ProductsService {
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
 
     if (data.barcode && data.barcode !== product.barcode) await this.assertBarcodeFree(data.barcode);
+    if (data.lotTracking !== undefined && data.lotTracking !== product.lotTracking) await this.assertWithoutStock(id);
 
     return this.prisma.product.update({ where: { id }, data });
   }

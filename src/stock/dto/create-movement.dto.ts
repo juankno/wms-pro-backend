@@ -47,6 +47,22 @@ export class CreateMovementDto {
   @IsString()
   locationId?: string;
 
+  @ApiPropertyOptional({ description: 'Lot code for increases of lot-tracked products (created if new)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  lot?: string;
+
+  @ApiPropertyOptional({ example: '2027-06-30', description: 'Expiry of a new lot' })
+  @IsOptional()
+  @IsDateString()
+  lotExpiresAt?: string;
+
+  @ApiPropertyOptional({ description: 'Lot to take from on decreases; omitted: first expired, first out' })
+  @IsOptional()
+  @IsString()
+  lotId?: string;
+
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()
   @IsString()
@@ -62,6 +78,10 @@ export class TransferDto {
   @ApiPropertyOptional({ maxLength: 500 }) @IsOptional() @IsString() @MaxLength(500) notes?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() fromLocationId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() toLocationId?: string;
+  @ApiPropertyOptional({ description: 'Lot to move; omitted: first expired, first out' })
+  @IsOptional()
+  @IsString()
+  lotId?: string;
 }
 
 export class RelocateDto {

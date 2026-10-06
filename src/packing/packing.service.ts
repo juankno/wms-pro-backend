@@ -14,6 +14,7 @@ import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
 import { OrderTargetStatus } from '../picking/dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
+import { returnPickedLots } from '../stock/lot-stock';
 
 type LockedPackingOrder = PackingOrder & { items: PackingItem[]; pickingItems: PickingItem[] };
 
@@ -304,6 +305,15 @@ export class PackingService {
     }
   }
 
+  private async singleShippedLot(tx: Prisma.TransactionClient, pickingItemIds: string[]) {
+    const lots = await tx.pickingItemLot.findMany({
+      where: { pickingItemId: { in: pickingItemIds }, quantity: { gt: 0 } },
+      distinct: ['lotId'],
+      select: { lotId: true },
+    });
+    return lots.length === 1 ? lots[0].lotId : undefined;
+  }
+
   // Ships the packed quantities and releases the whole picking reservation (packed or not).
   private async consumeReservations(tx: Prisma.TransactionClient, order: LockedPackingOrder, user: AuthUser) {
     const reserved = sumByProduct(order.pickingItems, (i) => i.reservedQuantity);
@@ -327,6 +337,11 @@ export class PackingService {
           details: [{ productId, requested: quantity, available: stock.onHand - reservadoDespues }],
         });
       }
+
+      const itemIds = order.pickingItems.filter((item) => item.productId === productId).map((item) => item.id);
+      const unshipped = (picked.get(productId) ?? 0) - quantity;
+      if (unshipped > 0) await returnPickedLots(tx, stock, itemIds, unshipped);
+      const shippedLotId = await this.singleShippedLot(tx, itemIds);
 
       await tx.warehouseStock.update({
         where: { id: stock.id },
@@ -354,6 +369,7 @@ export class PackingService {
             referenceId: order.id,
             operatorId: user.id,
             operatorName: user.name,
+            lotId: shippedLotId,
           },
         });
       }

@@ -320,6 +320,6 @@ Content-Type: application/json
     @Body() body: UpdatePickingItemDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user, body.locationId);
+    return this.pickingService.updateItem(orderId, itemId, body.pickedQuantity, user, body.locationId, body.lotId);
   }
 }

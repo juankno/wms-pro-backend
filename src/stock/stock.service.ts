@@ -6,10 +6,12 @@ import { ManualMovementType } from './dto/create-movement.dto';
 import { lockWarehouseStock } from './stock-lock';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { Allocation, allocateOutbound, assertUnlocatedAvailable, putAway, takeFromLocation } from './location-stock';
+import { addToLots, fefoOrder, LotInput, receiveIntoLot, singleLot, takeFromLots } from './lot-stock';
 
 const MOVEMENT_LOCATIONS = {
   location: { select: { id: true, code: true } },
   toLocation: { select: { id: true, code: true } },
+  lot: { select: { id: true, code: true, expiresAt: true } },
 } as const;
 
 // Movements keep the location only when a single one was involved.
@@ -31,6 +33,8 @@ export class StockService {
     operatorId: string;
     operatorName: string;
     locationId?: string;
+    lot?: LotInput;
+    lotId?: string;
   }) {
     return this.prisma.$transaction(async (tx) => {
       const stock = await lockWarehouseStock(tx, opts.productId, opts.warehouseId);
@@ -51,10 +55,13 @@ export class StockService {
       }
 
       let locationId = opts.locationId;
+      let lotId: string | null | undefined;
       if (isDecrease) {
         locationId = singleLocation(await allocateOutbound(tx, stock, opts.quantity, opts.locationId));
-      } else if (opts.locationId) {
-        await putAway(tx, stock, opts.locationId, opts.quantity);
+        lotId = singleLot(await takeFromLots(tx, stock, opts.quantity, opts.lotId));
+      } else {
+        if (opts.locationId) await putAway(tx, stock, opts.locationId, opts.quantity);
+        lotId = await receiveIntoLot(tx, stock, opts.quantity, opts.lot);
       }
 
       const newFisico = isDecrease ? onHand - opts.quantity : onHand + opts.quantity;
@@ -81,6 +88,7 @@ export class StockService {
           operatorId: opts.operatorId,
           operatorName: opts.operatorName,
           locationId,
+          lotId,
         },
       });
 
@@ -105,6 +113,7 @@ export class StockService {
     operatorName: string;
     fromLocationId?: string;
     toLocationId?: string;
+    lotId?: string;
   }) {
     if (opts.fromWarehouseId === opts.toWarehouseId) {
       throw new BadRequestException({ error: 'SAME_WAREHOUSE', message: 'El almacén origen y destino deben ser distintos' });
@@ -146,6 +155,9 @@ export class StockService {
 
       const fromLocationId = singleLocation(await allocateOutbound(tx, fromStock, opts.quantity, opts.fromLocationId));
       if (opts.toLocationId) await putAway(tx, toStock, opts.toLocationId, opts.quantity);
+      const lots = await takeFromLots(tx, fromStock, opts.quantity, opts.lotId);
+      await addToLots(tx, toStock, lots);
+      const lotId = singleLot(lots);
 
       const newFromFisico = fromStock.onHand - opts.quantity;
       const newToFisico = toStock.onHand + opts.quantity;
@@ -169,6 +181,7 @@ export class StockService {
           operatorId: opts.operatorId,
           operatorName: opts.operatorName,
           locationId: fromLocationId,
+          lotId,
         },
       });
       const inMov = await tx.stockMovement.create({
@@ -188,6 +201,7 @@ export class StockService {
           operatorId: opts.operatorId,
           operatorName: opts.operatorName,
           locationId: opts.toLocationId,
+          lotId,
         },
       });
 
@@ -262,12 +276,16 @@ export class StockService {
   }
 
   async productLocations(productId: string, warehouseId: string) {
-    const [stock, rows] = await Promise.all([
+    const [stock, rows, lots] = await Promise.all([
       this.prisma.warehouseStock.findUnique({ where: { productId_warehouseId: { productId, warehouseId } } }),
       this.prisma.locationStock.findMany({
         where: { productId, warehouseId },
         include: { location: { select: { id: true, code: true, type: true, pickSequence: true } } },
         orderBy: [{ location: { pickSequence: 'asc' } }, { location: { code: 'asc' } }],
+      }),
+      this.prisma.lotStock.findMany({
+        where: { productId, warehouseId, quantity: { gt: 0 } },
+        include: { lot: { select: { id: true, code: true, expiresAt: true, createdAt: true } } },
       }),
     ]);
     if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'El producto no tiene stock registrado en este almacén' });
@@ -279,6 +297,9 @@ export class StockService {
       available: stock.onHand - stock.reserved,
       unlocated: stock.onHand - stock.picked - located,
       locations: rows.map((row) => ({ location: row.location, quantity: row.quantity })),
+      lots: lots
+        .sort((a, b) => fefoOrder(a.lot, b.lot))
+        .map(({ lot, quantity }) => ({ lot: { id: lot.id, code: lot.code, expiresAt: lot.expiresAt }, quantity })),
     };
   }
 

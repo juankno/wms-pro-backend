@@ -14,17 +14,21 @@ import {
   missingColumns,
   parseBoolean,
   parseCsv,
+  parseDate,
   parsePositiveInt,
   RowError,
 } from './csv';
+import { receiveIntoLot } from '../stock/lot-stock';
 
 export const IMPORT_KINDS = ['products', 'locations', 'stock'] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
 export const IMPORT_TEMPLATES: Record<ImportKind, string> = {
-  products: 'code,name,category,barcode,unit,brand,description\nTOR-001,Tornillo 3/8,Ferretería,7701234567890,UND,Acme,Tornillo de acero\n',
+  products:
+    'code,name,category,barcode,unit,brand,description,lotTracking\n' +
+    'TOR-001,Tornillo 3/8,Ferretería,7701234567890,UND,Acme,Tornillo de acero,no\n',
   locations: 'warehouse,code,type,parent,name,storable,capacity,pickSequence\nBOG-01,A,aisle,,Pasillo A,no,,\nBOG-01,A-01,bin,A,,si,100,1\n',
-  stock: 'warehouse,product,quantity,location\nBOG-01,TOR-001,50,A-01\n',
+  stock: 'warehouse,product,quantity,location,lot,expiresAt\nBOG-01,TOR-001,50,A-01,,\n',
 };
 
 const REQUIRED_COLUMNS: Record<ImportKind, string[]> = {
@@ -120,11 +124,14 @@ export class ImportsService {
     const codes = unique(rows.map((row) => row.code));
     const barcodes = unique(rows.map((row) => row.barcode ?? ''));
     const [existing, barcodeOwners, extraBarcodes] = await Promise.all([
-      this.prisma.product.findMany({ where: { code: { in: codes } }, select: { code: true } }),
+      this.prisma.product.findMany({
+        where: { code: { in: codes } },
+        select: { code: true, lotTracking: true, warehouseStock: { select: { onHand: true } } },
+      }),
       this.prisma.product.findMany({ where: { barcode: { in: barcodes } }, select: { code: true, barcode: true } }),
       this.prisma.productBarcode.findMany({ where: { code: { in: barcodes } }, select: { code: true, product: { select: { code: true } } } }),
     ]);
-    const existingCodes = new Set(existing.map((product) => product.code));
+    const existingByCode = new Map(existing.map((product) => [product.code, product]));
     const seenCodes = new Set<string>();
     const seenBarcodes = new Set<string>();
 
@@ -133,6 +140,14 @@ export class ImportsService {
       if (!row.code || !row.name || !row.category) errors.push({ line, message: 'code, name y category son obligatorios' });
       if (seenCodes.has(row.code)) errors.push({ line, message: `El código ${row.code} está repetido en el archivo` });
       seenCodes.add(row.code);
+
+      const lotTracking = parseBoolean(row.lotTracking);
+      if (row.lotTracking && lotTracking === undefined) errors.push({ line, message: `lotTracking debe ser si o no: ${row.lotTracking}` });
+      const current = existingByCode.get(row.code);
+      const hasStock = current?.warehouseStock.some((stock) => stock.onHand > 0);
+      if (current && lotTracking !== undefined && lotTracking !== current.lotTracking && hasStock) {
+        errors.push({ line, message: `${row.code} tiene stock; no se puede cambiar el manejo de lotes` });
+      }
 
       if (!row.barcode) return;
       if (seenBarcodes.has(row.barcode)) errors.push({ line, message: `El código de barras ${row.barcode} está repetido en el archivo` });
@@ -143,7 +158,7 @@ export class ImportsService {
       if (takenBy) errors.push({ line, message: `El código de barras ${row.barcode} ya es del producto ${takenBy}` });
     });
 
-    const created = rows.filter((row) => !existingCodes.has(row.code)).length;
+    const created = rows.filter((row) => !existingByCode.has(row.code)).length;
     return {
       errors,
       created,
@@ -158,6 +173,7 @@ export class ImportsService {
             unit: row.unit || undefined,
             brand: row.brand || undefined,
             description: row.description || undefined,
+            lotTracking: parseBoolean(row.lotTracking),
           };
           await tx.product.upsert({
             where: { tenantId_code: { tenantId, code: row.code } },
@@ -259,7 +275,7 @@ export class ImportsService {
     const warehouses = await this.warehousesByCode(rows);
     const products = await this.prisma.product.findMany({
       where: { code: { in: unique(rows.map((row) => row.product)) }, active: true },
-      select: { id: true, code: true },
+      select: { id: true, code: true, lotTracking: true },
     });
     const productByCode = new Map(products.map((product) => [product.code, product]));
     const locations = await this.prisma.location.findMany({
@@ -284,7 +300,13 @@ export class ImportsService {
         else if (!location.storable) errors.push({ line, message: `La ubicación ${row.location} no admite stock` });
         else locationId = location.id;
       }
-      return { warehouseId: warehouse?.id, productId: product?.id, quantity, locationId };
+      const expiresAt = row.expiresAt ? parseDate(row.expiresAt) : undefined;
+      if (row.expiresAt && !expiresAt) errors.push({ line, message: `Fecha de vencimiento inválida (AAAA-MM-DD): ${row.expiresAt}` });
+      if (product?.lotTracking && !row.lot) errors.push({ line, message: `${row.product} maneja lotes; indica el lote` });
+      if (product && !product.lotTracking && row.lot) errors.push({ line, message: `${row.product} no maneja lotes` });
+      const lot = row.lot ? { code: row.lot, expiresAt } : undefined;
+
+      return { warehouseId: warehouse?.id, productId: product?.id, quantity, locationId, lot };
     });
 
     return {
@@ -304,6 +326,7 @@ export class ImportsService {
           });
           const stock = (await lockWarehouseStock(tx, productId, warehouseId))!;
           if (entry.locationId) await putAway(tx, stock, entry.locationId, quantity);
+          const lotId = await receiveIntoLot(tx, stock, quantity, entry.lot);
           await tx.warehouseStock.update({ where: { id: stock.id }, data: { onHand: stock.onHand + quantity } });
           await tx.stockMovement.create({
             data: {
@@ -321,6 +344,7 @@ export class ImportsService {
               operatorId: user.id,
               operatorName: user.name,
               locationId: entry.locationId,
+              lotId,
             },
           });
         }

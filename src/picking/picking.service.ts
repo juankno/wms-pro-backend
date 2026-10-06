@@ -16,6 +16,7 @@ import { allocateOutbound, Allocation, putAway, suggestedLocations } from '../st
 import { OrderTargetStatus } from './dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
 import { PlanLimitsService } from '../tenancy/plan-limits.service';
+import { recordPickedLots, returnPickedLots, takeFromLots } from '../stock/lot-stock';
 
 type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
 
@@ -233,7 +234,14 @@ export class PickingService {
     });
   }
 
-  async updateItem(orderId: string, itemId: string, pickedQuantity: number, user: AuthUser, locationId?: string) {
+  async updateItem(
+    orderId: string,
+    itemId: string,
+    pickedQuantity: number,
+    user: AuthUser,
+    locationId?: string,
+    lotId?: string,
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, user);
       this.assertEditable(order);
@@ -248,7 +256,7 @@ export class PickingService {
       }
 
       const delta = pickedQuantity - item.pickedQuantity;
-      if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId);
+      if (delta !== 0) await this.movePickedUnits(tx, order, item, delta, user, locationId, lotId);
 
       const updatedItem = await tx.pickingItem.update({ where: { id: itemId }, data: { pickedQuantity } });
       await tx.pickingOrder.update({ where: { id: orderId }, data: { updatedAt: new Date() } });
@@ -332,6 +340,7 @@ export class PickingService {
     delta: number,
     user: AuthUser,
     locationId?: string,
+    lotId?: string,
   ) {
     const stock = await lockWarehouseStock(tx, item.productId, order.warehouseId);
     if (!stock) throw new NotFoundException({ error: 'STOCK_NOT_FOUND', message: 'Registro de stock no encontrado' });
@@ -339,8 +348,10 @@ export class PickingService {
     let allocations: Allocation[];
     if (delta > 0) {
       allocations = await allocateOutbound(tx, stock, delta, locationId);
+      await recordPickedLots(tx, item.id, await takeFromLots(tx, stock, delta, lotId));
     } else {
       if (locationId) await putAway(tx, stock, locationId, -delta);
+      await returnPickedLots(tx, stock, [item.id], -delta, lotId);
       allocations = [{ locationId: locationId ?? null, quantity: -delta }];
     }
     await tx.warehouseStock.update({ where: { id: stock.id }, data: { picked: stock.picked + delta } });
@@ -368,13 +379,15 @@ export class PickingService {
     }
   }
 
-  // Units picked for an order that will not ship stay in the warehouse without a location.
+  // Units picked for an order that will not ship stay in the warehouse without a location, back in their lots.
   private async releasePicked(tx: Prisma.TransactionClient, order: LockedPickingOrder) {
     const picked = sumByProduct(order.items, (item) => item.pickedQuantity);
     const stocks = await lockWarehouseStocks(tx, order.warehouseId, [...picked.keys()]);
     for (const [productId, quantity] of picked) {
       const stock = stocks.get(productId);
       if (!stock || quantity === 0) continue;
+      const itemIds = order.items.filter((item) => item.productId === productId).map((item) => item.id);
+      await returnPickedLots(tx, stock, itemIds, quantity);
       await tx.warehouseStock.update({
         where: { id: stock.id },
         data: { picked: Math.max(0, stock.picked - quantity) },

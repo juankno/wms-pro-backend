@@ -68,6 +68,8 @@ model Tenant {
   locationStock  LocationStock[]
   partners       Partner[]
   barcodes       ProductBarcode[]
+  lots           Lot[]
+  lotStock       LotStock[]
 
   @@map("tenants")
 }
@@ -135,6 +137,7 @@ model Warehouse {
   invitations    UserInvitation[]
   locations      Location[]
   locationStock  LocationStock[]
+  lotStock       LotStock[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -154,6 +157,8 @@ model Product {
   compatibility String[] @default([])
   imageUrl      String?
   photos        String[] @default([])
+  // Lot-tracked products need a lot on every receipt and ship first-expired-first-out.
+  lotTracking   Boolean  @default(false)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -164,6 +169,8 @@ model Product {
   pickingItems   PickingItem[]
   packingItems   PackingItem[]
   barcodes       ProductBarcode[]
+  lots           Lot[]
+  lotStock       LotStock[]
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, code])
@@ -211,6 +218,7 @@ model StockMovement {
   // Source (or the only) location involved; toLocationId is the destination of relocations.
   locationId     String?
   toLocationId   String?
+  lotId          String?
   createdAt      DateTime     @default(now())
 
   product    Product   @relation(fields: [productId], references: [id])
@@ -218,6 +226,7 @@ model StockMovement {
   operator   User      @relation(fields: [operatorId], references: [id])
   location   Location? @relation("MovementLocation", fields: [locationId], references: [id], onDelete: SetNull)
   toLocation Location? @relation("MovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  lot        Lot?      @relation(fields: [lotId], references: [id], onDelete: SetNull)
   tenant     Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt(sort: Desc)])
@@ -271,8 +280,9 @@ model PickingItem {
   unit             String  @default("UND")
   notes            String?
 
-  pickingOrder PickingOrder @relation(fields: [pickingOrderId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id])
+  pickingOrder PickingOrder     @relation(fields: [pickingOrderId], references: [id], onDelete: Cascade)
+  product      Product          @relation(fields: [productId], references: [id])
+  lots         PickingItemLot[]
 
   @@map("picking_items")
 }
@@ -566,4 +576,57 @@ model ProductBarcode {
   @@unique([tenantId, code])
   @@index([productId])
   @@map("product_barcodes")
+}
+
+model Lot {
+  id        String    @id @default(uuid())
+  tenantId  String
+  productId String
+  code      String
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  product   Product          @relation(fields: [productId], references: [id])
+  stock     LotStock[]
+  picks     PickingItemLot[]
+  movements StockMovement[]
+
+  @@unique([productId, code])
+  @@index([tenantId, expiresAt])
+  @@map("lots")
+}
+
+// Units of a lot in a warehouse. For lot-tracked products the lots add up to onHand - picked.
+model LotStock {
+  id          String   @id @default(uuid())
+  tenantId    String
+  productId   String
+  warehouseId String
+  lotId       String
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  lot       Lot       @relation(fields: [lotId], references: [id])
+
+  @@unique([lotId, warehouseId])
+  @@index([tenantId, warehouseId, productId])
+  @@map("lot_stock")
+}
+
+// Lots taken by a picking line; after shipping they record which lots left with the order.
+model PickingItemLot {
+  id            String @id @default(uuid())
+  pickingItemId String
+  lotId         String
+  quantity      Int
+
+  pickingItem PickingItem @relation(fields: [pickingItemId], references: [id], onDelete: Cascade)
+  lot         Lot         @relation(fields: [lotId], references: [id])
+
+  @@unique([pickingItemId, lotId])
+  @@map("picking_item_lots")
 }

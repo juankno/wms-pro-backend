@@ -44,6 +44,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @ApiPropertyOptional({ default: false, description: 'Require lots and ship first-expired-first-out' })
+  @IsOptional()
+  @IsBoolean()
+  lotTracking?: boolean;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {

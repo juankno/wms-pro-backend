@@ -208,6 +208,8 @@ Content-Type: application/json
       operatorId: user.id,
       operatorName: user.name,
       locationId: body.locationId,
+      lotId: body.lotId,
+      lot: body.lot ? { code: body.lot, expiresAt: body.lotExpiresAt ? new Date(body.lotExpiresAt) : undefined } : undefined,
     });
   }
 
