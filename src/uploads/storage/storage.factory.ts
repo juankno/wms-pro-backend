@@ -20,6 +20,6 @@ export function createObjectStorage(env: NodeJS.ProcessEnv = process.env): Objec
     });
   }
 
-  const apiBase = env.PUBLIC_URL ?? `http://localhost:${env.PORT ?? 3000}/${env.API_PREFIX ?? 'v1'}`;
-  return new LocalStorage(env.UPLOAD_DIR ?? './uploads', `${apiBase}/uploads`);
+  // Root-relative URLs work from any host that reaches the API (web on localhost, phones on the LAN).
+  return new LocalStorage(env.UPLOAD_DIR ?? './uploads', `/${env.API_PREFIX ?? 'v1'}/uploads`);
 }
