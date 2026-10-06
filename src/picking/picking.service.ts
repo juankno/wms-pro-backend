@@ -13,6 +13,7 @@ import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
 import { OrderTargetStatus } from './dto/create-picking.dto';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
 
@@ -124,6 +125,7 @@ export class PickingService {
 
       const order = await tx.pickingOrder.create({
         data: {
+          tenantId: requireTenantId(),
           reference: data.reference,
           client: data.client,
           warehouseId: data.warehouseId,

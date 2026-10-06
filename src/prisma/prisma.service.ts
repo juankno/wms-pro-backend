@@ -1,13 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { withTenantIsolation } from '../tenancy/tenant-isolation';
 
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  async onModuleInit() {
-    await this.$connect();
-  }
-
-  async onModuleDestroy() {
-    await this.$disconnect();
-  }
+export function createPrismaClient(databaseUrl?: string): PrismaService {
+  const client = new PrismaClient(databaseUrl ? { datasources: { db: { url: databaseUrl } } } : undefined);
+  return withTenantIsolation(client);
 }
+
+// Injection token and type for the tenant-scoped client built by createPrismaClient.
+export abstract class PrismaService extends PrismaClient {}

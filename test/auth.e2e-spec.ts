@@ -1,58 +1,99 @@
-import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaClient, Role } from '@prisma/client';
+import { Role, Tenant, TenantStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AuthService } from '../src/auth/auth.service';
 import { AuthUser } from '../src/common/types/request-with-user.interface';
-import { PrismaService } from '../src/prisma/prisma.service';
 import { UsersService } from '../src/users/users.service';
-
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('TEST_DATABASE_URL must point to a disposable database');
-}
+import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
 process.env.JWT_SECRET ??= 'test-access-secret';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 
 describe('Auth and users (integration)', () => {
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } }) as PrismaService;
-  const users = new UsersService(prisma);
-  const auth = new AuthService(prisma, users, new JwtService({ secret: process.env.JWT_SECRET }));
+  const prisma = testPrisma();
+  const jwt = new JwtService({ secret: process.env.JWT_SECRET });
+  const auth = new AuthService(prisma, new UsersService(prisma), jwt);
   const password = 'correct-horse-1';
-  const createdUserIds: string[] = [];
+  let tenant: Tenant;
+  let otherTenant: Tenant;
+  const users = scopedTo(new UsersService(prisma), () => tenant.id);
 
-  const createUser = async (role: Role = Role.operator) => {
-    const suffix = randomUUID().slice(0, 8);
-    const user = await prisma.user.create({
+  const createUser = async (role: Role = Role.operator, owner: Tenant = tenant, username = `u-${randomUUID().slice(0, 8)}`) =>
+    prisma.user.create({
       data: {
-        username: `u-${suffix}`,
-        email: `u-${suffix}@example.com`,
-        name: `User ${suffix}`,
+        tenantId: owner.id,
+        username,
+        email: `${username}@example.com`,
+        name: `User ${username}`,
         role,
         password: await bcrypt.hash(password, 4),
       },
     });
-    createdUserIds.push(user.id);
-    return user;
-  };
-  const asActor = (user: { id: string; username: string; name: string; role: Role }): AuthUser => ({
-    id: user.id, sub: user.id, username: user.username, name: user.name, role: user.role, warehouseId: null,
+  const asActor = (user: { id: string; tenantId: string; username: string; name: string; role: Role }): AuthUser => ({
+    id: user.id, sub: user.id, tenantId: user.tenantId, username: user.username, name: user.name, role: user.role, warehouseId: null,
   });
-  const login = (username: string, pass = password) => auth.login({ username, password: pass });
+  const login = (username: string, pass = password, slug = tenant.slug) => auth.login({ tenant: slug, username, password: pass });
 
   beforeAll(async () => {
-    const admins = await prisma.user.count({ where: { role: Role.admin, active: true } });
-    if (admins > 0) throw new Error('The test database must not contain active admins');
+    [tenant, otherTenant] = await Promise.all([createTestTenant(prisma), createTestTenant(prisma)]);
   });
 
   afterEach(async () => {
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds.splice(0) } } });
+    await prisma.user.deleteMany({ where: { tenantId: { in: [tenant.id, otherTenant.id] } } });
+    await prisma.tenant.updateMany({ where: { id: { in: [tenant.id, otherTenant.id] } }, data: { status: TenantStatus.active } });
   });
 
-  afterAll(() => prisma.$disconnect());
+  afterAll(async () => {
+    await deleteTestTenant(prisma, tenant.id);
+    await deleteTestTenant(prisma, otherTenant.id);
+    await prisma.$disconnect();
+  });
+
+  describe('tenant resolution', () => {
+    it('signs the tenant into the access token and returns it', async () => {
+      const user = await createUser();
+      const result = await login(user.username);
+
+      expect(result.tenant).toMatchObject({ id: tenant.id, slug: tenant.slug });
+      expect(jwt.decode<{ tenantId: string }>(result.accessToken).tenantId).toBe(tenant.id);
+    });
+
+    it('keeps the same username independent across tenants', async () => {
+      const username = `shared-${randomUUID().slice(0, 8)}`;
+      await createUser(Role.operator, tenant, username);
+      await createUser(Role.operator, otherTenant, username);
+
+      const [a, b] = await Promise.all([login(username), login(username, password, otherTenant.slug)]);
+
+      expect(a.tenant.id).toBe(tenant.id);
+      expect(b.tenant.id).toBe(otherTenant.id);
+      expect(a.user.id).not.toBe(b.user.id);
+    });
+
+    it('rejects a user that belongs to another tenant', async () => {
+      const user = await createUser(Role.operator, otherTenant);
+
+      await expect(login(user.username)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('requires the tenant when several tenants are active', async () => {
+      const user = await createUser();
+
+      await expect(auth.login({ username: user.username, password })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('blocks login and refresh for suspended tenants', async () => {
+      const user = await createUser();
+      const { refreshToken } = await login(user.username);
+      await prisma.tenant.update({ where: { id: tenant.id }, data: { status: TenantStatus.suspended } });
+
+      await expect(login(user.username)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(auth.refresh(refreshToken)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
 
   describe('sessions', () => {
     it('stores only a hash of the refresh token', async () => {
@@ -138,9 +179,10 @@ describe('Auth and users (integration)', () => {
       });
     });
 
-    it('keeps at least one active admin', async () => {
+    it('keeps at least one active admin per tenant', async () => {
       const admin = await createUser(Role.admin);
       const operator = await createUser();
+      await createUser(Role.admin, otherTenant);
 
       await expect(users.update(admin.id, { role: Role.operator }, asActor(operator))).rejects.toBeInstanceOf(
         UnprocessableEntityException,
@@ -163,6 +205,15 @@ describe('Auth and users (integration)', () => {
       await users.update(operator.id, { active: false }, asActor(admin));
 
       await expect(auth.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('cannot update users of another tenant', async () => {
+      const admin = await createUser(Role.admin);
+      const foreign = await createUser(Role.operator, otherTenant);
+
+      await expect(users.update(foreign.id, { name: 'Hijacked' }, asActor(admin))).rejects.toMatchObject({
+        response: { error: 'USER_NOT_FOUND' },
+      });
     });
   });
 });

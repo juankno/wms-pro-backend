@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Role } from '@prisma/client';
+import { Role, Tenant, TenantStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { createHmac, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,13 +24,16 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
-    const user = await this.usersService.findByUsername(dto.username);
+    const tenant = await this.resolveLoginTenant(dto.tenant);
+    const user = tenant ? await this.usersService.findByUsername(tenant.id, dto.username) : null;
     const passwordMatches = await bcrypt.compare(dto.password, user?.password ?? TIMING_EQUALIZER_HASH);
-    if (!user || !user.active || !passwordMatches) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (!tenant || !user || !user.active || !passwordMatches) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    this.assertTenantActive(tenant);
 
     const tokens = await this.issueTokens(user);
     return {
       ...tokens,
+      tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
       user: {
         id: user.id,
         name: user.name,
@@ -44,7 +47,7 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: this.hashRefreshToken(refreshToken) },
-      include: { user: true },
+      include: { user: { include: { tenant: true } } },
     });
     if (!stored) throw new UnauthorizedException(REFRESH_EXPIRED);
 
@@ -55,6 +58,7 @@ export class AuthService {
     if (stored.expiresAt < new Date() || !stored.user.active) {
       throw new UnauthorizedException(REFRESH_EXPIRED);
     }
+    this.assertTenantActive(stored.user.tenant);
 
     const { count } = await this.prisma.refreshToken.updateMany({
       where: { id: stored.id, revoked: false },
@@ -110,10 +114,26 @@ export class AuthService {
     return this.prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
   }
 
-  private async issueTokens(user: { id: string; username: string; role: Role; warehouseId: string | null }) {
+  // Without a slug the only active company is used, so single-tenant clients keep working.
+  private async resolveLoginTenant(slug?: string): Promise<Tenant | null> {
+    if (slug) return this.prisma.tenant.findUnique({ where: { slug } });
+
+    const active = await this.prisma.tenant.findMany({ where: { status: TenantStatus.active }, take: 2 });
+    if (active.length === 1) return active[0];
+    throw new BadRequestException({ error: 'TENANT_REQUIRED', message: 'Indica el código de tu empresa' });
+  }
+
+  private assertTenantActive(tenant: Tenant) {
+    if (tenant.status !== TenantStatus.active) {
+      throw new ForbiddenException({ error: 'TENANT_SUSPENDED', message: 'La cuenta de la empresa está suspendida' });
+    }
+  }
+
+  private async issueTokens(user: { id: string; tenantId: string; username: string; role: Role; warehouseId: string | null }) {
     const { accessTtlSeconds, refreshTtlSeconds } = authConfig();
     const accessToken = this.jwtService.sign({
       sub: user.id,
+      tenantId: user.tenantId,
       username: user.username,
       role: user.role,
       warehouseId: user.warehouseId,

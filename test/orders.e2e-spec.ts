@@ -1,25 +1,22 @@
 import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
-import { PrismaClient, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ActivityService } from '../src/activity/activity.service';
 import { AuthUser } from '../src/common/types/request-with-user.interface';
 import { PackingService } from '../src/packing/packing.service';
 import { PickingService } from '../src/picking/picking.service';
-import { PrismaService } from '../src/prisma/prisma.service';
 import { UploadsService } from '../src/uploads/uploads.service';
+import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('TEST_DATABASE_URL must point to a disposable database');
-}
 
 describe('Picking and packing reservations (integration)', () => {
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } }) as PrismaService;
+  const prisma = testPrisma();
+  let tenantId: string;
   const activity = new ActivityService(prisma);
   const uploads = { deleteFile: () => undefined } as unknown as UploadsService;
-  const picking = new PickingService(prisma, activity, uploads);
-  const packing = new PackingService(prisma, activity, uploads);
+  const picking = scopedTo(new PickingService(prisma, activity, uploads), () => tenantId);
+  const packing = scopedTo(new PackingService(prisma, activity, uploads), () => tenantId);
 
   let admin: AuthUser;
   let outsider: AuthUser;
@@ -35,24 +32,25 @@ describe('Picking and packing reservations (integration)', () => {
     picking.create({ reference: ref(), client: 'Client', warehouseId, items }, admin);
 
   beforeAll(async () => {
+    tenantId = (await createTestTenant(prisma)).id;
     const suffix = randomUUID().slice(0, 8);
     const [w1, w2] = await Promise.all([
-      prisma.warehouse.create({ data: { code: `W1-${suffix}`, name: 'Main' } }),
-      prisma.warehouse.create({ data: { code: `W2-${suffix}`, name: 'Other' } }),
+      prisma.warehouse.create({ data: { tenantId, code: `W1-${suffix}`, name: 'Main' } }),
+      prisma.warehouse.create({ data: { tenantId, code: `W2-${suffix}`, name: 'Other' } }),
     ]);
     warehouseId = w1.id;
     otherWarehouseId = w2.id;
 
     const createUser = (name: string, role: Role, warehouse: string) =>
       prisma.user.create({
-        data: { username: `${name}-${suffix}`, email: `${name}-${suffix}@example.com`, name, role, password: 'unused', warehouseId: warehouse },
+        data: { tenantId, username: `${name}-${suffix}`, email: `${name}-${suffix}@example.com`, name, role, password: 'unused', warehouseId: warehouse },
       });
     const [adminRow, outsiderRow] = await Promise.all([
       createUser('admin', Role.admin, warehouseId),
       createUser('outsider', Role.operator, otherWarehouseId),
     ]);
     const toAuthUser = (u: typeof adminRow): AuthUser => ({
-      id: u.id, sub: u.id, name: u.name, username: u.username, role: u.role, warehouseId: u.warehouseId,
+      id: u.id, sub: u.id, tenantId, name: u.name, username: u.username, role: u.role, warehouseId: u.warehouseId,
     });
     admin = toAuthUser(adminRow);
     outsider = toAuthUser(outsiderRow);
@@ -61,15 +59,15 @@ describe('Picking and packing reservations (integration)', () => {
   beforeEach(async () => {
     const suffix = randomUUID().slice(0, 8);
     const [a, b] = await Promise.all([
-      prisma.product.create({ data: { code: `PA-${suffix}`, name: 'Product A', category: 'test' } }),
-      prisma.product.create({ data: { code: `PB-${suffix}`, name: 'Product B', category: 'test' } }),
+      prisma.product.create({ data: { tenantId, code: `PA-${suffix}`, name: 'Product A', category: 'test' } }),
+      prisma.product.create({ data: { tenantId, code: `PB-${suffix}`, name: 'Product B', category: 'test' } }),
     ]);
     productA = a.id;
     productB = b.id;
     await prisma.warehouseStock.createMany({
       data: [
-        { productId: productA, warehouseId, onHand: 10 },
-        { productId: productB, warehouseId, onHand: 5 },
+        { tenantId, productId: productA, warehouseId, onHand: 10 },
+        { tenantId, productId: productB, warehouseId, onHand: 5 },
       ],
     });
   });
@@ -90,9 +88,7 @@ describe('Picking and packing reservations (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.activityLog.deleteMany({ where: { userId: { in: [admin.id, outsider.id] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [admin.id, outsider.id] } } });
-    await prisma.warehouse.deleteMany({ where: { id: { in: [warehouseId, otherWarehouseId] } } });
+    await deleteTestTenant(prisma, tenantId);
     await prisma.$disconnect();
   });
 

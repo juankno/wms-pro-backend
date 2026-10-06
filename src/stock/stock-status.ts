@@ -26,6 +26,9 @@ export const STOCK_STATUS_CONDITION: Record<StockStatus, Prisma.Sql> = {
   ok: Prisma.sql`${AVAILABLE} > "minStock"`,
 };
 
-export function warehouseCondition(warehouseId?: string): Prisma.Sql {
-  return warehouseId ? Prisma.sql`"warehouseId" = ${warehouseId}` : Prisma.sql`TRUE`;
+// Raw SQL bypasses the tenant extension, so stock queries filter by tenant explicitly.
+export function stockScopeCondition(tenantId: string, warehouseId?: string): Prisma.Sql {
+  return warehouseId
+    ? Prisma.sql`ws."tenantId" = ${tenantId} AND ws."warehouseId" = ${warehouseId}`
+    : Prisma.sql`ws."tenantId" = ${tenantId}`;
 }

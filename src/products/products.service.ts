@@ -11,6 +11,7 @@ import { ProductQueryDto } from './dto/product-query.dto';
 import { paginate, buildMeta } from '../common/dto/pagination.dto';
 import { Prisma, WarehouseStock } from '@prisma/client';
 import { STOCK_STATUS_CONDITION, StockStatus } from '../stock/stock-status';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 @Injectable()
 export class ProductsService {
@@ -55,7 +56,8 @@ export class ProductsService {
     }
     const condition = status === 'out' ? Prisma.sql`NOT (${STOCK_STATUS_CONDITION.out})` : STOCK_STATUS_CONDITION[status];
     const rows = await this.prisma.$queryRaw<{ productId: string }[]>`
-      SELECT "productId" FROM warehouse_stock WHERE "warehouseId" = ${warehouseId} AND ${condition}`;
+      SELECT "productId" FROM warehouse_stock
+      WHERE "tenantId" = ${requireTenantId()} AND "warehouseId" = ${warehouseId} AND ${condition}`;
     const ids = rows.map((r) => r.productId);
     return status === 'out' ? { id: { notIn: ids } } : { id: { in: ids } };
   }
@@ -119,10 +121,10 @@ export class ProductsService {
 
   async create(dto: CreateProductDto) {
     if (dto.barcode) {
-      const exists = await this.prisma.product.findUnique({ where: { barcode: dto.barcode } });
+      const exists = await this.prisma.product.findFirst({ where: { barcode: dto.barcode } });
       if (exists) throw new ConflictException({ error: 'BARCODE_DUPLICATE', message: 'Ya existe un producto con ese código de barras' });
     }
-    return this.prisma.product.create({ data: dto });
+    return this.prisma.product.create({ data: { ...dto, tenantId: requireTenantId() } });
   }
 
   async update(id: string, data: Partial<CreateProductDto>) {
@@ -130,7 +132,7 @@ export class ProductsService {
     if (!product) throw new NotFoundException({ error: 'PRODUCT_NOT_FOUND', message: 'Producto no encontrado' });
 
     if (data.barcode && data.barcode !== product.barcode) {
-      const exists = await this.prisma.product.findUnique({ where: { barcode: data.barcode } });
+      const exists = await this.prisma.product.findFirst({ where: { barcode: data.barcode } });
       if (exists) throw new ConflictException({ error: 'BARCODE_DUPLICATE', message: 'Ya existe un producto con ese código de barras' });
     }
 

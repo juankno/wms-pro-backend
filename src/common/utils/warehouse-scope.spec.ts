@@ -5,7 +5,7 @@ import { AuthUser } from '../types/request-with-user.interface';
 import { assertWarehouseAccess, resolveWarehouseId, scopeWarehouseFilter } from './warehouse-scope';
 
 const buildUser = (role: Role, warehouseId: string | null): AuthUser => ({
-  id: 'u1', sub: 'u1', name: 'User', username: 'user', role, warehouseId,
+  id: 'u1', sub: 'u1', tenantId: 't1', name: 'User', username: 'user', role, warehouseId,
 });
 
 describe('warehouse scope', () => {
