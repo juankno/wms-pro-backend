@@ -7,6 +7,7 @@ import { AuthUser } from '../src/common/types/request-with-user.interface';
 import { PackingService } from '../src/packing/packing.service';
 import { PickingService } from '../src/picking/picking.service';
 import { UploadsService } from '../src/uploads/uploads.service';
+import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, scopedTo, testPrisma } from './support/tenancy';
 
 
@@ -15,7 +16,7 @@ describe('Picking and packing reservations (integration)', () => {
   let tenantId: string;
   const activity = new ActivityService(prisma);
   const uploads = { deleteFile: () => undefined } as unknown as UploadsService;
-  const picking = scopedTo(new PickingService(prisma, activity, uploads), () => tenantId);
+  const picking = scopedTo(new PickingService(prisma, activity, uploads, new PlanLimitsService(prisma)), () => tenantId);
   const packing = scopedTo(new PackingService(prisma, activity, uploads), () => tenantId);
 
   let admin: AuthUser;

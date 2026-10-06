@@ -9,6 +9,7 @@ import { ProductsService } from '../src/products/products.service';
 import { ReportsService } from '../src/reports/reports.service';
 import { UploadsService } from '../src/uploads/uploads.service';
 import { WarehousesService } from '../src/warehouses/warehouses.service';
+import { PlanLimitsService } from '../src/tenancy/plan-limits.service';
 import { createTestTenant, deleteTestTenant, runInTenant, scopedTo, testPrisma } from './support/tenancy';
 
 interface TenantFixture {
@@ -28,9 +29,9 @@ describe('Tenant isolation (integration)', () => {
     const tenantId = () => fixture().tenant.id;
     return {
       products: scopedTo(new ProductsService(prisma, uploads), tenantId),
-      warehouses: scopedTo(new WarehousesService(prisma), tenantId),
+      warehouses: scopedTo(new WarehousesService(prisma, new PlanLimitsService(prisma)), tenantId),
       reports: scopedTo(new ReportsService(prisma), tenantId),
-      picking: scopedTo(new PickingService(prisma, new ActivityService(prisma), uploads), tenantId),
+      picking: scopedTo(new PickingService(prisma, new ActivityService(prisma), uploads, new PlanLimitsService(prisma)), tenantId),
     };
   };
   const asA = servicesFor(() => a);

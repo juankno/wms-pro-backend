@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { requireTenantId } from '../tenancy/tenant-context';
+import { PlanLimitsService } from '../tenancy/plan-limits.service';
 
 const USER_SELECT = {
   id: true,
@@ -20,7 +21,10 @@ const USER_SELECT = {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private planLimits: PlanLimitsService,
+  ) {}
 
   findByUsername(tenantId: string, username: string) {
     return this.prisma.user.findUnique({
@@ -55,6 +59,7 @@ export class UsersService {
     role: Role;
     warehouseId?: string | null;
   }) {
+    await this.planLimits.assertCanCreate('users');
     const hashed = await bcrypt.hash(data.password, 10);
     const { warehouseId, ...rest } = data;
     const createData: Prisma.UserUncheckedCreateInput = {

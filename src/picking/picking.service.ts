@@ -14,6 +14,7 @@ import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
 import { lockWarehouseStocks, sumByProduct } from '../stock/stock-lock';
 import { OrderTargetStatus } from './dto/create-picking.dto';
 import { requireTenantId } from '../tenancy/tenant-context';
+import { PlanLimitsService } from '../tenancy/plan-limits.service';
 
 type LockedPickingOrder = PickingOrder & { items: PickingItem[] };
 
@@ -30,6 +31,7 @@ export class PickingService {
     private prisma: PrismaService,
     private activity: ActivityService,
     private uploads: UploadsService,
+    private planLimits: PlanLimitsService,
   ) {}
 
   async findAll(opts: {
@@ -96,6 +98,7 @@ export class PickingService {
     },
     user: AuthUser,
   ) {
+    await this.planLimits.assertCanCreate('ordersPerMonth');
     return this.prisma.$transaction(async (tx) => {
       const requested = sumByProduct(data.items, (i) => i.quantity);
       const stocks = await lockWarehouseStocks(tx, data.warehouseId, [...requested.keys()]);

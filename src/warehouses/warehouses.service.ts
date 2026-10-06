@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireTenantId } from '../tenancy/tenant-context';
+import { PlanLimitsService } from '../tenancy/plan-limits.service';
 
 @Injectable()
 export class WarehousesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private planLimits: PlanLimitsService,
+  ) {}
 
   findAll() {
     return this.prisma.warehouse.findMany({ where: { active: true } });
@@ -16,7 +20,8 @@ export class WarehousesService {
     return w;
   }
 
-  create(data: { name: string; code: string; address?: string }) {
+  async create(data: { name: string; code: string; address?: string }) {
+    await this.planLimits.assertCanCreate('warehouses');
     return this.prisma.warehouse.create({ data: { ...data, tenantId: requireTenantId() } });
   }
 
