@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ReceiptStatus } from '@prisma/client';
+import { ReceiptKind, ReceiptStatus, ReturnDisposition } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
@@ -17,6 +17,18 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { splitList } from '../../common/dto/list-transform';
 
 export class CreateReceiptDto {
+  @ApiPropertyOptional({ enum: ReceiptKind, default: ReceiptKind.purchase })
+  @IsOptional()
+  @IsEnum(ReceiptKind)
+  kind?: ReceiptKind;
+
+  @ApiPropertyOptional({ description: 'Customer returns: order being returned; its warehouse and customer are used' })
+  @IsOptional()
+  @IsString()
+  pickingOrderId?: string;
+
+  @ApiPropertyOptional({ description: 'Customer returns without an order' }) @IsOptional() @IsString() customerId?: string;
+
   @ApiPropertyOptional({ description: 'Receive against this order; its warehouse and supplier are used' })
   @IsOptional()
   @IsString()
@@ -37,6 +49,11 @@ export class AddReceiptLineDto {
 
   @ApiPropertyOptional({ description: 'Required for lot-tracked products' }) @IsOptional() @IsString() @MaxLength(50) lot?: string;
   @ApiPropertyOptional({ example: '2027-06-30' }) @IsOptional() @IsDateString() lotExpiresAt?: string;
+
+  @ApiPropertyOptional({ enum: ReturnDisposition, description: 'Customer returns only; scrap does not enter stock' })
+  @IsOptional()
+  @IsEnum(ReturnDisposition)
+  disposition?: ReturnDisposition;
 }
 
 export class UpdateReceiptLineDto {
@@ -50,6 +67,7 @@ export class UpdateReceiptLineDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) lot?: string;
   @ApiPropertyOptional({ example: '2027-06-30' }) @IsOptional() @IsDateString() lotExpiresAt?: string;
+  @ApiPropertyOptional({ enum: ReturnDisposition }) @IsOptional() @IsEnum(ReturnDisposition) disposition?: ReturnDisposition;
 }
 
 export class CompleteReceiptDto {
@@ -67,4 +85,5 @@ export class ReceiptQueryDto extends PaginationDto {
   status?: ReceiptStatus[];
   @ApiPropertyOptional() @IsOptional() @IsString() warehouseId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() purchaseOrderId?: string;
+  @ApiPropertyOptional({ enum: ReceiptKind }) @IsOptional() @IsEnum(ReceiptKind) kind?: ReceiptKind;
 }

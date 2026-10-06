@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { Prisma, PurchaseOrderStatus, ReceiptStatus } from '@prisma/client';
+import { OrderStatus, Prisma, PurchaseOrderStatus, ReceiptKind, ReceiptStatus, ReturnDisposition } from '@prisma/client';
 import { buildMeta, paginate } from '../common/dto/pagination.dto';
 import { AuthUser } from '../common/types/request-with-user.interface';
 import { assertWarehouseAccess } from '../common/utils/warehouse-scope';
@@ -14,7 +14,9 @@ type Tx = Prisma.TransactionClient;
 
 const RECEIPT_INCLUDE = {
   purchaseOrder: { select: { id: true, reference: true, status: true } },
+  pickingOrder: { select: { id: true, reference: true } },
   supplier: { select: { id: true, code: true, name: true } },
+  customer: { select: { id: true, code: true, name: true } },
   warehouse: { select: { id: true, code: true, name: true } },
   lines: {
     include: {
@@ -32,9 +34,17 @@ const NOT_FOUND = { error: 'RECEIPT_NOT_FOUND', message: 'Recepción no encontra
 export class ReceiptsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(opts: { status?: ReceiptStatus[]; warehouseId?: string; purchaseOrderId?: string; page: number; limit: number }) {
+  async findAll(opts: {
+    status?: ReceiptStatus[];
+    kind?: ReceiptKind;
+    warehouseId?: string;
+    purchaseOrderId?: string;
+    page: number;
+    limit: number;
+  }) {
     const where: Prisma.ReceiptWhereInput = {
       status: opts.status && { in: opts.status },
+      kind: opts.kind,
       warehouseId: opts.warehouseId,
       purchaseOrderId: opts.purchaseOrderId,
     };
@@ -75,10 +85,12 @@ export class ReceiptsService {
             : null,
       })),
     );
-    return { ...receipt, lines, expected };
+    const returnable = receipt.pickingOrderId ? await this.returnableItems(this.prisma, receipt.pickingOrderId, incoming, receipt.status) : [];
+    return { ...receipt, lines, expected, returnable };
   }
 
   async create(dto: CreateReceiptDto, user: AuthUser) {
+    if (dto.kind === ReceiptKind.customer_return) return this.createReturn(dto, user);
     let warehouseId = dto.warehouseId;
     let supplierId = dto.supplierId;
     if (dto.purchaseOrderId) {
@@ -98,19 +110,48 @@ export class ReceiptsService {
         throw new NotFoundException({ error: 'SUPPLIER_NOT_FOUND', message: 'Proveedor no encontrado o inactivo' });
       }
     }
-    if (!warehouseId) {
-      throw new UnprocessableEntityException({ error: 'WAREHOUSE_REQUIRED', message: 'Indica el almacén de la recepción' });
-    }
-    assertWarehouseAccess(user, warehouseId);
-    const warehouse = await this.prisma.warehouse.findUnique({ where: { id: warehouseId } });
-    if (!warehouse?.active) throw new NotFoundException({ error: 'WAREHOUSE_NOT_FOUND', message: 'Almacén no encontrado o inactivo' });
+    const targetWarehouseId = await this.requireWarehouse(warehouseId, user);
 
     const receipt = await this.prisma.receipt.create({
       data: {
         tenantId: requireTenantId(),
         purchaseOrderId: dto.purchaseOrderId,
         supplierId,
-        warehouseId,
+        warehouseId: targetWarehouseId,
+        notes: dto.notes,
+        createdById: user.id,
+      },
+    });
+    return this.findById(receipt.id, user);
+  }
+
+  // A return of a shipped order (its warehouse and customer apply) or of a customer without an order.
+  private async createReturn(dto: CreateReceiptDto, user: AuthUser) {
+    let warehouseId = dto.warehouseId;
+    let customerId = dto.customerId;
+    if (dto.pickingOrderId) {
+      const order = await this.prisma.pickingOrder.findUnique({ where: { id: dto.pickingOrderId }, include: { packingOrder: true } });
+      if (!order) throw new NotFoundException({ error: 'ORDER_NOT_FOUND', message: 'Orden no encontrada' });
+      if (order.packingOrder?.status !== OrderStatus.completed) {
+        throw new UnprocessableEntityException({ error: 'ORDER_NOT_SHIPPED', message: 'La orden todavía no se ha despachado' });
+      }
+      warehouseId = order.warehouseId;
+      customerId = order.customerId ?? undefined;
+    } else if (customerId) {
+      const customer = await this.prisma.partner.findUnique({ where: { id: customerId } });
+      if (!customer?.active || !customer.isCustomer) {
+        throw new NotFoundException({ error: 'CUSTOMER_NOT_FOUND', message: 'Cliente no encontrado o inactivo' });
+      }
+    }
+    const targetWarehouseId = await this.requireWarehouse(warehouseId, user);
+
+    const receipt = await this.prisma.receipt.create({
+      data: {
+        tenantId: requireTenantId(),
+        kind: ReceiptKind.customer_return,
+        pickingOrderId: dto.pickingOrderId,
+        customerId,
+        warehouseId: targetWarehouseId,
         notes: dto.notes,
         createdById: user.id,
       },
@@ -135,14 +176,17 @@ export class ReceiptsService {
           });
         }
       }
-      await this.assertLineDetails(tx, product, receipt.warehouseId, dto.lot, dto.locationId);
+      const disposition = this.dispositionFor(receipt.kind, dto.disposition);
+      if (receipt.pickingOrderId) await this.assertReturnable(tx, receipt.pickingOrderId, product, dto.quantity);
+      await this.assertLineDetails(tx, product, receipt.warehouseId, dto.lot, dto.locationId, disposition);
 
       const created = await tx.receiptLine.create({
         data: {
           receiptId: id,
           productId: product.id,
           quantity: dto.quantity,
-          locationId: dto.locationId,
+          disposition,
+          locationId: disposition === ReturnDisposition.scrap ? undefined : dto.locationId,
           lotCode: dto.lot?.trim().toUpperCase(),
           lotExpiresAt: dto.lotExpiresAt ? new Date(dto.lotExpiresAt) : undefined,
         },
@@ -164,12 +208,17 @@ export class ReceiptsService {
 
       const lot = dto.lot ?? line.lotCode ?? undefined;
       const locationId = dto.locationId === undefined ? (line.locationId ?? undefined) : (dto.locationId ?? undefined);
-      await this.assertLineDetails(tx, line.product, receipt.warehouseId, lot, locationId);
+      const disposition = this.dispositionFor(receipt.kind, dto.disposition ?? line.disposition);
+      if (receipt.pickingOrderId && dto.quantity !== undefined && dto.quantity > line.quantity) {
+        await this.assertReturnable(tx, receipt.pickingOrderId, line.product, dto.quantity - line.quantity);
+      }
+      await this.assertLineDetails(tx, line.product, receipt.warehouseId, lot, locationId, disposition);
 
       return tx.receiptLine.update({
         where: { id: lineId },
         data: {
           quantity: dto.quantity,
+          disposition,
           locationId: dto.locationId,
           lotCode: dto.lot?.trim().toUpperCase(),
           lotExpiresAt: dto.lotExpiresAt ? new Date(dto.lotExpiresAt) : undefined,
@@ -220,7 +269,9 @@ export class ReceiptsService {
           }
         }
 
-        for (const line of lines) await this.postLine(tx, receipt, line, order?.reference, user);
+        for (const line of lines) {
+          if (line.disposition === ReturnDisposition.restock) await this.postLine(tx, receipt, line, order?.reference, user);
+        }
         await tx.receipt.update({ where: { id }, data: { status: ReceiptStatus.completed, completedAt: new Date() } });
 
         if (order) {
@@ -248,7 +299,16 @@ export class ReceiptsService {
           }));
         }
 
-        return [...incoming].map(([productId, received]) => ({ productId, ordered: null, received, pending: 0, over: 0 }));
+        const restocked = sumByProduct(lines, (line) => (line.disposition === ReturnDisposition.restock ? line.quantity : 0));
+        const scrapped = sumByProduct(lines, (line) => (line.disposition === ReturnDisposition.scrap ? line.quantity : 0));
+        return [...incoming.keys()].map((productId) => ({
+          productId,
+          ordered: null,
+          received: restocked.get(productId) ?? 0,
+          scrapped: scrapped.get(productId) ?? 0,
+          pending: 0,
+          over: 0,
+        }));
       },
       { timeout: 60_000 },
     );
@@ -257,7 +317,7 @@ export class ReceiptsService {
 
   private async postLine(
     tx: Tx,
-    receipt: { id: string; warehouseId: string },
+    receipt: { id: string; warehouseId: string; kind: ReceiptKind },
     line: { productId: string; quantity: number; locationId: string | null; lotCode: string | null; lotExpiresAt: Date | null },
     orderReference: string | undefined,
     user: AuthUser,
@@ -282,15 +342,17 @@ export class ReceiptsService {
         tenantId,
         productId: line.productId,
         warehouseId: receipt.warehouseId,
-        type: 'purchase_receipt',
+        type: receipt.kind === ReceiptKind.customer_return ? 'customer_return' : 'purchase_receipt',
         quantity: line.quantity,
         onHandBefore: stock.onHand,
         onHandAfter: stock.onHand + line.quantity,
         reservedBefore: stock.reserved,
         reservedAfter: stock.reserved,
-        referenceType: 'receipt',
+        referenceType: receipt.kind === ReceiptKind.customer_return ? 'return' : 'receipt',
         referenceId: receipt.id,
-        notes: orderReference ? `Recepción de ${orderReference}` : 'Recepción sin orden',
+        notes: receipt.kind === ReceiptKind.customer_return
+          ? 'Devolución de cliente'
+          : orderReference ? `Recepción de ${orderReference}` : 'Recepción sin orden',
         operatorId: user.id,
         operatorName: user.name,
         locationId: line.locationId,
@@ -343,7 +405,9 @@ export class ReceiptsService {
     warehouseId: string,
     lot?: string,
     locationId?: string,
+    disposition: ReturnDisposition = ReturnDisposition.restock,
   ) {
+    if (disposition === ReturnDisposition.scrap) return;
     if (product.lotTracking && !lot) {
       throw new UnprocessableEntityException({ error: 'LOT_REQUIRED', message: `${product.code} maneja lotes; indica el lote` });
     }
@@ -351,6 +415,67 @@ export class ReceiptsService {
       throw new UnprocessableEntityException({ error: 'PRODUCT_NOT_LOT_TRACKED', message: 'El producto no maneja lotes' });
     }
     if (locationId) await this.assertStorableLocation(tx, locationId, warehouseId);
+  }
+
+  private dispositionFor(kind: ReceiptKind, requested?: ReturnDisposition) {
+    if (kind === ReceiptKind.purchase && requested === ReturnDisposition.scrap) {
+      throw new UnprocessableEntityException({ error: 'DISPOSITION_NOT_ALLOWED', message: 'Solo las devoluciones admiten descarte' });
+    }
+    return requested ?? ReturnDisposition.restock;
+  }
+
+  // Units returned (completed or in open returns) cannot exceed what the order shipped.
+  private async assertReturnable(tx: Tx, pickingOrderId: string, product: { id: string; code: string }, extra: number) {
+    const [item] = await this.returnableItems(tx, pickingOrderId, new Map(), ReceiptStatus.completed, product.id);
+    if (!item) {
+      throw new UnprocessableEntityException({ error: 'PRODUCT_NOT_IN_ORDER', message: `${product.code} no se despachó en esa orden` });
+    }
+    if (item.previouslyReturned + extra > item.shipped) {
+      throw new UnprocessableEntityException({
+        error: 'RETURN_EXCEEDS_SHIPPED',
+        message: `Se despacharon ${item.shipped} y ya se devolvieron ${item.previouslyReturned}`,
+        details: { productId: product.id, shipped: item.shipped, returned: item.previouslyReturned, requested: extra },
+      });
+    }
+  }
+
+  private async returnableItems(
+    client: Tx | PrismaService,
+    pickingOrderId: string,
+    incoming: Map<string, number>,
+    status: ReceiptStatus,
+    productId?: string,
+  ) {
+    const [packed, returned] = await Promise.all([
+      client.packingItem.findMany({
+        where: { packingOrder: { pickingOrderId, status: OrderStatus.completed }, packedQuantity: { gt: 0 }, productId },
+        include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+      }),
+      client.receiptLine.findMany({
+        where: { productId, receipt: { pickingOrderId, status: { in: [ReceiptStatus.open, ReceiptStatus.completed] } } },
+        select: { productId: true, quantity: true },
+      }),
+    ]);
+    const shipped = sumByProduct(packed, (item) => item.packedQuantity);
+    const returnedByProduct = sumByProduct(returned, (line) => line.quantity);
+    const inThisReceipt = (id: string) => (status === ReceiptStatus.open ? (incoming.get(id) ?? 0) : 0);
+    const products = new Map(packed.map((item) => [item.productId, item.product]));
+    return [...shipped].map(([id, quantity]) => ({
+      product: products.get(id)!,
+      shipped: quantity,
+      previouslyReturned: (returnedByProduct.get(id) ?? 0) - inThisReceipt(id),
+      inThisReceipt: inThisReceipt(id),
+    }));
+  }
+
+  private async requireWarehouse(warehouseId: string | undefined, user: AuthUser): Promise<string> {
+    if (!warehouseId) {
+      throw new UnprocessableEntityException({ error: 'WAREHOUSE_REQUIRED', message: 'Indica el almacén de la recepción' });
+    }
+    assertWarehouseAccess(user, warehouseId);
+    const warehouse = await this.prisma.warehouse.findUnique({ where: { id: warehouseId } });
+    if (!warehouse?.active) throw new NotFoundException({ error: 'WAREHOUSE_NOT_FOUND', message: 'Almacén no encontrado o inactivo' });
+    return warehouseId;
   }
 
   private async assertStorableLocation(tx: Tx, locationId: string, warehouseId: string) {
