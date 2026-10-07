@@ -78,7 +78,7 @@ describe('Background jobs (integration)', () => {
     await drain();
 
     expect(await jobOf(job.id)).toMatchObject({
-      status: JobStatus.completed, progress: 100, attempts: 1, result: { echo: { value: 42 } }, lockedUntil: null,
+      status: JobStatus.completed, progress: 100, progressMessage: null, attempts: 1, result: { echo: { value: 42 } }, lockedUntil: null,
     });
     expect(calls).toEqual([{ type: 'test.echo', tenantId, attempt: 1 }]);
   });
