@@ -80,6 +80,7 @@ model Tenant {
   shipments      Shipment[]
   cycleCounts    CycleCount[]
   stockTransfers StockTransfer[]
+  jobs           Job[]
 
   @@map("tenants")
 }
@@ -115,6 +116,7 @@ model User {
   approvedCounts    CycleCount[]     @relation("CountApprover")
   sentTransfers     StockTransfer[]  @relation("TransferSender")
   receivedTransfers StockTransfer[]  @relation("TransferReceiver")
+  jobs              Job[]
   stockMovements    StockMovement[]
   activityLogs      ActivityLog[]
   tenant            Tenant           @relation(fields: [tenantId], references: [id])
@@ -1087,4 +1089,41 @@ model StockTransferItem {
 
   @@unique([transferId, productId])
   @@map("stock_transfer_items")
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+// Background work of a tenant. Workers claim rows with FOR UPDATE SKIP LOCKED; a running job whose
+// lock expired (crashed worker) is claimed again.
+model Job {
+  id              String    @id @default(uuid())
+  tenantId        String
+  type            String
+  status          JobStatus @default(queued)
+  payload         Json      @default("{}")
+  result          Json?
+  error           String?
+  progress        Int       @default(0)
+  progressMessage String?
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(3)
+  runAt           DateTime  @default(now())
+  lockedUntil     DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  createdBy User?  @relation(fields: [createdById], references: [id])
+
+  @@index([status, runAt])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("jobs")
 }

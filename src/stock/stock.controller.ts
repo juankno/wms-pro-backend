@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -10,6 +10,8 @@ import {
 } from '@nestjs/swagger';
 import { MovementType } from '@prisma/client';
 import { StockService } from './stock.service';
+import { JobsService } from '../jobs/jobs.service';
+import { STOCK_INTEGRITY_JOB } from './stock-integrity.job';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -57,7 +59,21 @@ const ERR_422 = { error: 'VALIDATION_ERROR', message: 'Datos de entrada inválid
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller()
 export class StockController {
-  constructor(private stockService: StockService) {}
+  constructor(
+    private stockService: StockService,
+    private jobs: JobsService,
+  ) {}
+
+  @Post('stock/integrity-check')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequirePermissions('stock.adjust', 'warehouses.all')
+  @ApiOperation({
+    summary: 'Verificar la integridad del stock en segundo plano',
+    description: 'Encola un trabajo que revisa saldos, ubicaciones y lotes de todos los almacenes. Consulta el resultado en `GET /jobs/:id`.',
+  })
+  checkIntegrity(@CurrentUser() user: AuthUser) {
+    return this.jobs.enqueue(STOCK_INTEGRITY_JOB, {}, { createdById: user.id });
+  }
 
   @Get('stock/movements')
   @ApiOperation({

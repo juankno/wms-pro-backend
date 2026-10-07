@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authConfig, mailConfig, parseDurationSeconds, validateEnv } from './env';
+import { authConfig, jobsConfig, mailConfig, parseDurationSeconds, validateEnv } from './env';
 
 const strongSecret = 'a'.repeat(40);
 const baseEnv = { DATABASE_URL: 'postgresql://x', JWT_SECRET: strongSecret, JWT_REFRESH_SECRET: `${strongSecret}b` };
@@ -54,5 +54,14 @@ describe('env', () => {
       accessTtlSeconds: 900,
       refreshTtlSeconds: 2_592_000,
     });
+  });
+
+  it('runs the job worker by default and lets an instance opt out', () => {
+    expect(jobsConfig({})).toEqual({ worker: true, concurrency: 2, pollMs: 1000, lockSeconds: 300 });
+    expect(jobsConfig({ JOBS_WORKER: 'false', JOBS_CONCURRENCY: '4' })).toMatchObject({ worker: false, concurrency: 4 });
+  });
+
+  it('rejects invalid job settings', () => {
+    expect(() => validateEnv({ ...baseEnv, JOBS_CONCURRENCY: '0' })).toThrow('JOBS_CONCURRENCY must be a positive integer');
   });
 });
