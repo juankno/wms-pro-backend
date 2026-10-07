@@ -16,6 +16,7 @@ export function createTestTenant(prisma: PrismaService) {
 // Deletes every row of the tenant; children cascade from their orders.
 export async function deleteTestTenant(prisma: PrismaService, tenantId: string) {
   await prisma.$transaction([
+    prisma.job.deleteMany({ where: { tenantId } }),
     prisma.activityLog.deleteMany({ where: { tenantId } }),
     prisma.auditLog.deleteMany({ where: { tenantId } }),
     prisma.shipment.deleteMany({ where: { tenantId } }),

@@ -25,6 +25,7 @@ export const PERMISSIONS = {
   'audit.read': 'Ver auditoría',
   'tenant.manage': 'Ver plan y uso de la empresa',
   'settings.manage': 'Configurar campos personalizados',
+  'jobs.manage': 'Ver y reintentar los trabajos en segundo plano de toda la empresa',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -49,6 +50,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'orders.delete',
     'reports.read',
     'users.read',
+    'jobs.manage',
   ],
   admin: ALL_PERMISSIONS,
 };

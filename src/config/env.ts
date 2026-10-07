@@ -32,6 +32,23 @@ export function validateEnv(env: NodeJS.ProcessEnv = process.env): void {
   parseDurationSeconds(env.JWT_EXPIRES_IN ?? '1h');
   parseDurationSeconds(env.JWT_REFRESH_EXPIRES_IN ?? '30d');
   mailConfig(env);
+  jobsConfig(env);
+}
+
+const positiveInt = (env: NodeJS.ProcessEnv, name: string, fallback: number) => {
+  const value = Number(env[name] ?? fallback);
+  if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`);
+  return value;
+};
+
+// JOBS_WORKER=false keeps an API instance from running jobs (e.g. when a dedicated worker does).
+export function jobsConfig(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    worker: env.JOBS_WORKER !== 'false',
+    concurrency: positiveInt(env, 'JOBS_CONCURRENCY', 2),
+    pollMs: positiveInt(env, 'JOBS_POLL_MS', 1000),
+    lockSeconds: positiveInt(env, 'JOBS_LOCK_SECONDS', 300),
+  };
 }
 
 const MAIL_DRIVERS = ['log', 'smtp'] as const;

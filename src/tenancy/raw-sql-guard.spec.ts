@@ -30,8 +30,10 @@ const TENANT_TABLES = [
   'shipments',
   'cycle_counts',
   'stock_transfers',
+  'jobs',
 ];
-const TENANT_FILTER = /"tenantId"|stockScopeCondition\(/;
+// Platform statements that serve every tenant must say so with a `-- cross-tenant:` comment.
+const TENANT_FILTER = /"tenantId"|stockScopeCondition\(|-- cross-tenant:/;
 const RAW_SQL = /\$(?:queryRaw|executeRaw)(?:<[^`]*?>)?`([\s\S]*?)`/g;
 
 function sourceFiles(dir: string): string[] {

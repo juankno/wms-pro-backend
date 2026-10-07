@@ -38,6 +38,7 @@ import { WavesModule } from './waves/waves.module';
 import { ShippingModule } from './shipping/shipping.module';
 import { CycleCountsModule } from './cycle-counts/cycle-counts.module';
 import { StockTransfersModule } from './transfers/stock-transfers.module';
+import { JobsModule } from './jobs/jobs.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { StockTransfersModule } from './transfers/stock-transfers.module';
     ShippingModule,
     CycleCountsModule,
     StockTransfersModule,
+    JobsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
