@@ -100,6 +100,14 @@ describe('Background imports (integration)', () => {
     expect(storedFiles()).toEqual([expect.stringMatching(/-errores\.csv$/)]);
   });
 
+  it('validates files with more rows than PostgreSQL accepts as query parameters', async () => {
+    const rows = Array.from({ length: 33_000 }, (_, index) => `BULK-${index},Producto ${index},`);
+
+    const job = await runImport(Buffer.from(['code,name,category', ...rows].join('\n')), 'masivo.csv');
+
+    expect(job).toMatchObject({ status: JobStatus.failed, attempts: 1, result: { total: 33_000, errors: 33_000 } });
+  });
+
   it('fails without retrying when the file cannot be read', async () => {
     const job = await runImport(Buffer.from('code,name,category\n'), 'vacio.csv');
 
