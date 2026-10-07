@@ -164,10 +164,10 @@ describe('Lots and expiry (integration)', () => {
   it('imports opening balances with lots and expiry', async () => {
     const code = (await prisma.product.findUniqueOrThrow({ where: { id: productId } })).code;
     const csv = `warehouse,product,quantity,lot,expiresAt\nMAIN,${code},7,IMP-1,2028-05-01\nMAIN,${code},1,,\n`;
-    const dry = await imports.run('stock', Buffer.from(csv), true, admin);
+    const dry = await imports.run('stock', Buffer.from(csv), 'csv', true, admin);
     expect(dry.errors.map((e) => e.line)).toEqual([3]);
 
-    await imports.run('stock', Buffer.from(csv.split('\n').slice(0, 2).join('\n')), false, admin);
+    await imports.run('stock', Buffer.from(csv.split('\n').slice(0, 2).join('\n')), 'csv', false, admin);
     expect(await lotBalances()).toEqual({ 'IMP-1': 7 });
   });
 });

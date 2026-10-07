@@ -23,3 +23,10 @@ export function createObjectStorage(env: NodeJS.ProcessEnv = process.env): Objec
   // Root-relative URLs work from any host that reaches the API (web on localhost, phones on the LAN).
   return new LocalStorage(env.UPLOAD_DIR ?? './uploads', `/${env.API_PREFIX ?? 'v1'}/uploads`);
 }
+
+// Local: a directory outside UPLOAD_DIR, which is served publicly. S3: the same bucket under the
+// private/ prefix, which the bucket policy must keep out of public access.
+export function createPrivateStorage(env: NodeJS.ProcessEnv = process.env): ObjectStorage {
+  if (env.STORAGE_DRIVER === 's3') return createObjectStorage(env);
+  return new LocalStorage(env.PRIVATE_STORAGE_DIR ?? './storage/private', '/private');
+}

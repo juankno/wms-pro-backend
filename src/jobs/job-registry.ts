@@ -16,8 +16,16 @@ export interface JobDefinition<P = unknown> {
   maxAttempts?: number;
 }
 
-// Thrown by handlers for errors a retry cannot fix (invalid input, missing data).
-export class PermanentJobError extends Error {}
+// Thrown by handlers for errors a retry cannot fix (invalid input, missing data). The result is
+// kept on the failed job, e.g. to point at an error report.
+export class PermanentJobError extends Error {
+  constructor(
+    message: string,
+    readonly result?: unknown,
+  ) {
+    super(message);
+  }
+}
 
 @Injectable()
 export class JobRegistry {

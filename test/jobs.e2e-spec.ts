@@ -28,7 +28,7 @@ describe('Background jobs (integration)', () => {
   const jobOf = (id: string) => prisma.job.findUniqueOrThrow({ where: { id } });
   const enqueue = (type: string, payload: object = {}, user = owner) => jobs.enqueue(type, payload, { createdById: user.id });
   const makeDue = (id: string) => prisma.job.update({ where: { id }, data: { runAt: new Date(Date.now() - 1000) } });
-  // Other test files never enqueue jobs, so a generous limit drains everything that is due.
+  // Integration files run one at a time, so a generous limit drains only the jobs of this file.
   const drain = () => worker.runOnce(50);
 
   beforeAll(async () => {

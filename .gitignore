@@ -31,3 +31,6 @@ prisma/migrations/dev.db
 coverage/
 
 *.tsbuildinfo
+
+# Archivos privados (importaciones y reportes de errores)
+/storage/

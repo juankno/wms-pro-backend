@@ -16,7 +16,7 @@ describe('CSV imports (integration)', () => {
   const stock = scopedTo(new StockService(prisma), () => tenantId);
 
   const run = (kind: ImportKind, csv: string, dryRun = false, user = admin) =>
-    imports.run(kind, Buffer.from(csv), dryRun, user);
+    imports.run(kind, Buffer.from(csv), 'csv', dryRun, user);
 
   beforeAll(async () => {
     tenantId = (await createTestTenant(prisma)).id;

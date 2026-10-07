@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { isSafeKey, keyFromPublicUrl, ObjectStorage } from './object-storage';
 
 export interface S3StorageConfig {
@@ -37,6 +37,13 @@ export class S3Storage implements ObjectStorage {
         CacheControl: 'public, max-age=31536000, immutable',
       }),
     );
+  }
+
+  async get(key: string): Promise<Buffer> {
+    this.assertSafe(key);
+    const { Body } = await this.client.send(new GetObjectCommand({ Bucket: this.config.bucket, Key: key }));
+    if (!Body) throw new Error(`Empty object: ${key}`);
+    return Buffer.from(await Body.transformToByteArray());
   }
 
   async delete(key: string): Promise<void> {
