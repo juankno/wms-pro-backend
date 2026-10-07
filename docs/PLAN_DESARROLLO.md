@@ -218,6 +218,7 @@ Ideas evaluadas y aceptadas como dirección del producto, sin fecha. Se prioriza
 - **Datos de demostración:** `npm run prisma:seed` (idempotente) y `npm run db:check` para revisar los invariantes de stock. Usuarios `admin/admin123`, `supervisor/sup123`, `operario/op123`.
 - **Fotos:** con almacenamiento local la API guarda URLs relativas (`/v1/uploads/...`) y cada cliente las completa con su URL de API; `PUBLIC_URL` ya no se usa.
 - **Variables:** `STORAGE_DRIVER`/`S3_*`, `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL`. Ver `.env.example`.
-- **Siguiente tarea:** Fase 5.5 empezando por la cola de trabajos (5.5.1); luego 5.3 (reabastecimiento) y 5.4 (notificaciones).
+- **Cola de trabajos (5.5.1) lista:** backend #48 y #49, web #20. Variables `JOBS_WORKER`, `JOBS_CONCURRENCY`, `JOBS_POLL_MS` y `JOBS_LOCK_SECONDS`; permiso nuevo `jobs.manage`.
+- **Siguiente tarea:** 5.5.2 (importación CSV/XLSX sobre la cola); luego 5.5.3 a 5.5.5, 5.3 (reabastecimiento) y 5.4 (notificaciones).
 - **Propuestas a futuro:** F1 (sincronización con SAP Business One), sin fecha.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).

@@ -113,7 +113,7 @@ export class JobWorker implements OnApplicationBootstrap, OnApplicationShutdown 
 
     try {
       const result = await runInTenant(job.tenantId, () => definition.handler(job.payload, context));
-      await this.finish(job, JobStatus.completed, { result: (result ?? null) as Prisma.InputJsonValue, progress: 100 });
+      await this.finish(job, JobStatus.completed, { result: (result ?? null) as Prisma.InputJsonValue, progress: 100, progressMessage: null });
     } catch (error) {
       const permanent = error instanceof PermanentJobError;
       if (!permanent && job.attempts < job.maxAttempts) {
