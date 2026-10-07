@@ -212,12 +212,12 @@ Ideas evaluadas y aceptadas como dirección del producto, sin fecha. Se prioriza
 
 - **Fases 0, 1, 2 y 4 completas** (la entrega desde el móvil de la Fase 4 sigue pendiente).
 - **Fase 3 en curso:** 3.1, 3.3 y 3.5 (API) listas; 3.4 con sugerencia simple; 3.2 (ASN) y 3.6 (putaway móvil) pendientes.
-- **Fase 5 en curso:** 5.1 y 5.2 con API lista; 5.3 y 5.4 pendientes.
-- **Todo mergeado a `main` (2026-10-05):** backend hasta #45, web hasta #18, móvil hasta #11. No quedan ramas abiertas.
+- **Fase 5 en curso:** 5.1 (conteos) y 5.2 (traslados) completos con API, web y móvil (la app cuenta escaneando y recibe traslados; crear y aprobar se hace en la web); 5.3 y 5.4 pendientes.
+- **Todo mergeado a `main` (2026-10-06):** backend hasta #46, web hasta #19, móvil hasta #13. No quedan ramas abiertas.
 - **CI deshabilitado** a pedido del usuario (`gh workflow disable`); la garantía es la verificación local (lint, typecheck, tests y build) antes de cada commit. Los workflows siguen en el repo.
 - **Datos de demostración:** `npm run prisma:seed` (idempotente) y `npm run db:check` para revisar los invariantes de stock. Usuarios `admin/admin123`, `supervisor/sup123`, `operario/op123`.
 - **Fotos:** con almacenamiento local la API guarda URLs relativas (`/v1/uploads/...`) y cada cliente las completa con su URL de API; `PUBLIC_URL` ya no se usa.
 - **Variables:** `STORAGE_DRIVER`/`S3_*`, `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL`. Ver `.env.example`.
-- **Siguiente tarea:** UI de conteos y traslados (web y móvil); 5.3 (reabastecimiento), 5.4 (notificaciones) y Fase 5.5.
+- **Siguiente tarea:** Fase 5.5 empezando por la cola de trabajos (5.5.1); luego 5.3 (reabastecimiento) y 5.4 (notificaciones).
 - **Propuestas a futuro:** F1 (sincronización con SAP Business One), sin fecha.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).
