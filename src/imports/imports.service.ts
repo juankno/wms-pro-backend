@@ -65,6 +65,17 @@ export interface ImportResult {
 
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
 
+// PostgreSQL accepts at most 32767 bind parameters per statement, so big IN lists go in chunks.
+const LOOKUP_CHUNK = 10_000;
+
+export async function inChunks<T>(values: string[], fetch: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
+  const results: T[] = [];
+  for (let start = 0; start < values.length; start += LOOKUP_CHUNK) {
+    results.push(...(await fetch(values.slice(start, start + LOOKUP_CHUNK))));
+  }
+  return results;
+}
+
 @Injectable()
 export class ImportsService {
   constructor(private prisma: PrismaService) {}
@@ -139,12 +150,18 @@ export class ImportsService {
     const codes = unique(rows.map((row) => row.code));
     const barcodes = unique(rows.map((row) => row.barcode ?? ''));
     const [existing, barcodeOwners, extraBarcodes] = await Promise.all([
-      this.prisma.product.findMany({
-        where: { code: { in: codes } },
-        select: { code: true, lotTracking: true, warehouseStock: { select: { onHand: true } } },
-      }),
-      this.prisma.product.findMany({ where: { barcode: { in: barcodes } }, select: { code: true, barcode: true } }),
-      this.prisma.productBarcode.findMany({ where: { code: { in: barcodes } }, select: { code: true, product: { select: { code: true } } } }),
+      inChunks(codes, (chunk) =>
+        this.prisma.product.findMany({
+          where: { code: { in: chunk } },
+          select: { code: true, lotTracking: true, warehouseStock: { select: { onHand: true } } },
+        }),
+      ),
+      inChunks(barcodes, (chunk) =>
+        this.prisma.product.findMany({ where: { barcode: { in: chunk } }, select: { code: true, barcode: true } }),
+      ),
+      inChunks(barcodes, (chunk) =>
+        this.prisma.productBarcode.findMany({ where: { code: { in: chunk } }, select: { code: true, product: { select: { code: true } } } }),
+      ),
     ]);
     const existingByCode = new Map(existing.map((product) => [product.code, product]));
     const seenCodes = new Set<string>();
@@ -288,17 +305,14 @@ export class ImportsService {
   private async planStock(rows: CsvRow[], user: AuthUser): Promise<ImportPlan> {
     const errors: RowError[] = [];
     const warehouses = await this.warehousesByCode(rows);
-    const products = await this.prisma.product.findMany({
-      where: { code: { in: unique(rows.map((row) => row.product)) }, active: true },
-      select: { id: true, code: true, lotTracking: true },
-    });
+    const products = await inChunks(unique(rows.map((row) => row.product)), (chunk) =>
+      this.prisma.product.findMany({ where: { code: { in: chunk }, active: true }, select: { id: true, code: true, lotTracking: true } }),
+    );
     const productByCode = new Map(products.map((product) => [product.code, product]));
-    const locations = await this.prisma.location.findMany({
-      where: {
-        warehouseId: { in: [...warehouses.values()].map((warehouse) => warehouse.id) },
-        code: { in: unique(rows.map((row) => (row.location ?? '').toUpperCase())) },
-      },
-    });
+    const warehouseIds = [...warehouses.values()].map((warehouse) => warehouse.id);
+    const locations = await inChunks(unique(rows.map((row) => (row.location ?? '').toUpperCase())), (chunk) =>
+      this.prisma.location.findMany({ where: { warehouseId: { in: warehouseIds }, code: { in: chunk } } }),
+    );
 
     const entries = rows.map((row, index) => {
       const line = lineOf(index);
