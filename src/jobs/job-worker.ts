@@ -129,7 +129,8 @@ export class JobWorker implements OnApplicationBootstrap, OnApplicationShutdown 
         return;
       }
       this.logger.warn(`Trabajo ${job.type} ${job.id} falló: ${errorMessage(error)}`);
-      await this.finish(job, JobStatus.failed, { error: errorMessage(error) });
+      const result = permanent && error.result !== undefined ? (error.result as Prisma.InputJsonValue) : undefined;
+      await this.finish(job, JobStatus.failed, { error: errorMessage(error), result });
     }
   }
 

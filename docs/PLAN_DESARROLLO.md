@@ -172,7 +172,7 @@ Las estimaciones son gruesas, para 1–2 desarrolladores. **Primera versión ven
 
 ### Fase 5.5 — Plataforma de procesos y documentos (2–3 semanas)
 - [x] 5.5.1 Trabajos en segundo plano (D13): tabla de trabajos visible por empresa, progreso, reintentos y reporte de errores. Primer trabajo: verificación de integridad del stock.
-- [ ] 5.5.2 Importación asíncrona CSV/XLSX sobre la cola, con plantillas por tipo y archivo de errores (D16).
+- [x] 5.5.2 Importación asíncrona CSV/XLSX sobre la cola, con plantillas por tipo y archivo de errores (D16). Hasta 50.000 filas, todo o nada; los archivos van a un almacenamiento privado.
 - [ ] 5.5.3 API de integración con API keys, scopes, lotes idempotentes y límites por plan (D14; adelanta parte de 7.1).
 - [ ] 5.5.4 Eliminación lógica y purga programada (D15).
 - [ ] 5.5.5 Documentos PDF: lista de picking, nota de despacho/remisión, acta de recepción, hoja de conteo y orden de compra, con marca de la empresa (D16).
@@ -219,6 +219,8 @@ Ideas evaluadas y aceptadas como dirección del producto, sin fecha. Se prioriza
 - **Fotos:** con almacenamiento local la API guarda URLs relativas (`/v1/uploads/...`) y cada cliente las completa con su URL de API; `PUBLIC_URL` ya no se usa.
 - **Variables:** `STORAGE_DRIVER`/`S3_*`, `MAIL_DRIVER`, `SMTP_URL`, `MAIL_FROM`, `APP_URL`. Ver `.env.example`.
 - **Cola de trabajos (5.5.1) lista:** backend #48 y #49, web #20. Variables `JOBS_WORKER`, `JOBS_CONCURRENCY`, `JOBS_POLL_MS` y `JOBS_LOCK_SECONDS`; permiso nuevo `jobs.manage`.
-- **Siguiente tarea:** 5.5.2 (importación CSV/XLSX sobre la cola); luego 5.5.3 a 5.5.5, 5.3 (reabastecimiento) y 5.4 (notificaciones).
+- **Importación en segundo plano (5.5.2) lista.** Variable nueva `PRIVATE_STORAGE_DIR`. Los archivos subidos se borran al terminar; los reportes de errores quedan hasta la purga de 5.5.4.
+- **Dependencias con alertas de seguridad previas:** `nodemailer` y `sharp` (altas) y `csv-parse` (moderada); actualizarlas en una tarea aparte.
+- **Siguiente tarea:** 5.5.3 (API de integración con API keys); luego 5.5.4, 5.5.5, 5.3 (reabastecimiento) y 5.4 (notificaciones).
 - **Propuestas a futuro:** F1 (sincronización con SAP Business One), sin fecha.
 - **Base de pruebas:** `TEST_DATABASE_URL` → `wms_pro_test` (desechable).

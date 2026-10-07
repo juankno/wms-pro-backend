@@ -18,6 +18,10 @@ export class LocalStorage implements ObjectStorage {
     await fs.writeFile(file, body);
   }
 
+  get(key: string): Promise<Buffer> {
+    return fs.readFile(this.resolve(key));
+  }
+
   async delete(key: string): Promise<void> {
     await fs.rm(this.resolve(key), { force: true });
   }

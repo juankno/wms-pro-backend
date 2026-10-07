@@ -13,11 +13,11 @@ import {
   MAX_IMPORT_ROWS,
   missingColumns,
   parseBoolean,
-  parseCsv,
   parseDate,
   parsePositiveInt,
   RowError,
 } from './csv';
+import { ImportFormat, readSpreadsheet } from './spreadsheet';
 import { receiveIntoLot } from '../stock/lot-stock';
 
 export const IMPORT_KINDS = ['products', 'locations', 'stock'] as const;
@@ -39,6 +39,9 @@ const REQUIRED_COLUMNS: Record<ImportKind, string[]> = {
 
 const MAX_REPORTED_ERRORS = 200;
 const IMPORT_TIMEOUT_MS = 120_000;
+// Background imports read bigger files and report every error in a downloadable file.
+export const MAX_ASYNC_IMPORT_ROWS = 50_000;
+const ASYNC_IMPORT_TIMEOUT_MS = 10 * 60_000;
 const LOCATION_CODE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const LOCATION_TYPES = new Set<string>(Object.values(LocationType));
 const MAX_PARENT_DEPTH = 100;
@@ -67,9 +70,9 @@ export class ImportsService {
   constructor(private prisma: PrismaService) {}
 
   // Validates every row first; nothing is written unless the whole file is valid.
-  async run(kind: ImportKind, content: Buffer, dryRun: boolean, user: AuthUser): Promise<ImportResult> {
-    const rows = this.readRows(kind, content);
-    const plan = await this.plan(kind, rows, user);
+  async run(kind: ImportKind, content: Buffer, format: ImportFormat, dryRun: boolean, user: AuthUser): Promise<ImportResult> {
+    const rows = await this.readRows(kind, content, format, MAX_IMPORT_ROWS);
+    const plan = await this.plan(kind, rows, user, MAX_REPORTED_ERRORS);
     const result = { dryRun, total: rows.length, created: plan.created, updated: plan.updated, errors: plan.errors };
 
     if (plan.errors.length > 0) {
@@ -84,18 +87,30 @@ export class ImportsService {
     return result;
   }
 
-  private readRows(kind: ImportKind, content: Buffer): CsvRow[] {
+  // Background imports: every error is kept for the report and the apply step gets more time.
+  async validateAll(kind: ImportKind, rows: CsvRow[], user: AuthUser) {
+    const plan = await this.plan(kind, rows, user, Infinity);
+    return {
+      ...plan,
+      apply: () => this.prisma.$transaction((tx) => plan.apply(tx), { timeout: ASYNC_IMPORT_TIMEOUT_MS }),
+    };
+  }
+
+  async readRows(kind: ImportKind, content: Buffer, format: ImportFormat, maxRows: number): Promise<CsvRow[]> {
     let rows: CsvRow[];
     try {
-      rows = parseCsv(content);
+      rows = await readSpreadsheet(content, format);
     } catch (error) {
-      throw new UnprocessableEntityException({ error: 'IMPORT_INVALID_CSV', message: `CSV inválido: ${(error as Error).message}` });
+      throw new UnprocessableEntityException({
+        error: 'IMPORT_INVALID_FILE',
+        message: `Archivo ${format.toUpperCase()} inválido: ${(error as Error).message}`,
+      });
     }
     if (rows.length === 0) throw new UnprocessableEntityException({ error: 'IMPORT_EMPTY', message: 'El archivo no tiene filas' });
-    if (rows.length > MAX_IMPORT_ROWS) {
+    if (rows.length > maxRows) {
       throw new UnprocessableEntityException({
         error: 'IMPORT_TOO_LARGE',
-        message: `El archivo tiene ${rows.length} filas; el máximo es ${MAX_IMPORT_ROWS}`,
+        message: `El archivo tiene ${rows.length} filas; el máximo es ${maxRows}`,
       });
     }
     const missing = missingColumns(rows, REQUIRED_COLUMNS[kind]);
@@ -109,14 +124,14 @@ export class ImportsService {
     return rows;
   }
 
-  private async plan(kind: ImportKind, rows: CsvRow[], user: AuthUser): Promise<ImportPlan> {
+  private async plan(kind: ImportKind, rows: CsvRow[], user: AuthUser, errorLimit: number): Promise<ImportPlan> {
     const plan =
       kind === 'products'
         ? await this.planProducts(rows)
         : kind === 'locations'
           ? await this.planLocations(rows, user)
           : await this.planStock(rows, user);
-    return { ...plan, errors: plan.errors.slice(0, MAX_REPORTED_ERRORS) };
+    return { ...plan, errors: plan.errors.slice(0, errorLimit) };
   }
 
   private async planProducts(rows: CsvRow[]): Promise<ImportPlan> {
