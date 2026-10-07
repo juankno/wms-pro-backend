@@ -128,7 +128,8 @@ export class ImportsController {
     const { content, fileName } = await this.importJobs.errorReport(id, user);
     return new StreamableFile(content, {
       type: FORMAT_CONTENT_TYPES.csv,
-      disposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+      // RFC 5987 keeps accents and spaces of the uploaded file name.
+      disposition: `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     });
   }
 }
